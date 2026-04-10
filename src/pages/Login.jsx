@@ -18,7 +18,7 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      signIn(email.trim(), password)
+      await signIn(email.trim(), password)
       navigate(from, { replace: true })
     } catch (err) {
       setError(err.message)
