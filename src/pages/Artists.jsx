@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import BottomSheet from '../components/ui/BottomSheet'
-import { readTable, upsertRow } from '../services/db'
-
-// DB columns use snake_case: min_booking_fee, favorite_cities, spotify_url, avatar_initials
+import { supabase } from '../services/supabase'
 
 function SpotifyIcon() {
   return (
@@ -13,11 +11,35 @@ function SpotifyIcon() {
   )
 }
 
+async function fetchAllArtists() {
+  const { data, error } = await supabase
+    .from('artists')
+    .select('*, profiles(name, agency)')
+    .order('name')
+  if (error) throw error
+  return data
+}
+
+async function setAgentId(artistId, agentId) {
+  const { error } = await supabase
+    .from('artists')
+    .update({ agent_id: agentId })
+    .eq('id', artistId)
+  if (error) throw error
+}
+
 function EditArtistForm({ artist, onSave, onClose }) {
   const [draft, setDraft] = useState({ ...artist })
 
   function set(field, value) {
     setDraft((d) => ({ ...d, [field]: value }))
+  }
+
+  async function handleSave() {
+    const { profiles: _, ...row } = draft
+    const { error } = await supabase.from('artists').upsert(row)
+    if (error) { alert(error.message); return }
+    onSave()
   }
 
   return (
@@ -62,7 +84,7 @@ function EditArtistForm({ artist, onSave, onClose }) {
 
       <div className="flex gap-2 pt-2">
         <button
-          onClick={() => onSave(draft)}
+          onClick={handleSave}
           className="flex-1 rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 hover:bg-indigo-700 transition-colors"
         >
           Save changes
@@ -78,7 +100,10 @@ function EditArtistForm({ artist, onSave, onClose }) {
   )
 }
 
-function ArtistCard({ artist, isAdmin, onEdit }) {
+function ArtistCard({ artist, user, isAdmin, onEdit, onClaim, onRelease }) {
+  const isMine = artist.agent_id === user?.id
+  const isClaimed = !!artist.agent_id
+
   const fee = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -104,6 +129,22 @@ function ArtistCard({ artist, isAdmin, onEdit }) {
               Edit
             </button>
           )}
+          {!isAdmin && !isClaimed && (
+            <button
+              onClick={() => onClaim(artist)}
+              className="text-xs font-semibold px-3 py-1 rounded-full bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            >
+              Claim
+            </button>
+          )}
+          {!isAdmin && isMine && (
+            <button
+              onClick={() => onRelease(artist)}
+              className="text-xs font-medium text-gray-400 hover:text-red-500 transition-colors"
+            >
+              Release
+            </button>
+          )}
           <a
             href={artist.spotify_url}
             target="_blank"
@@ -115,6 +156,16 @@ function ArtistCard({ artist, isAdmin, onEdit }) {
           </a>
         </div>
       </div>
+
+      {/* Agent attribution */}
+      {isAdmin && (
+        <p className="text-xs mb-3 font-medium">
+          {isClaimed
+            ? <span className="text-indigo-600">{artist.profiles?.name ?? 'Unknown agent'} · {artist.profiles?.agency ?? ''}</span>
+            : <span className="text-gray-400">Unclaimed</span>
+          }
+        </p>
+      )}
 
       <div className="space-y-2 text-sm">
         <div className="flex justify-between">
@@ -136,6 +187,19 @@ function ArtistCard({ artist, isAdmin, onEdit }) {
   )
 }
 
+function Section({ title, children, empty }) {
+  return (
+    <div className="mb-8">
+      <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{title}</h2>
+      {children ?? (
+        <div className="rounded-2xl bg-white border border-gray-100 p-6 text-center">
+          <p className="text-sm text-gray-400">{empty}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Artists() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
@@ -144,24 +208,39 @@ export default function Artists() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
 
-  useEffect(() => {
-    readTable('artists')
-      .then(setArtists)
-      .finally(() => setLoading(false))
-  }, [])
-
-  async function handleSave(updated) {
-    const next = await upsertRow('artists', updated)
-    setArtists(next)
-    setEditing(null)
+  async function load() {
+    setLoading(true)
+    try {
+      setArtists(await fetchAllArtists())
+    } finally {
+      setLoading(false)
+    }
   }
+
+  useEffect(() => { load() }, [])
+
+  async function handleClaim(artist) {
+    await setAgentId(artist.id, user.id)
+    await load()
+  }
+
+  async function handleRelease(artist) {
+    await setAgentId(artist.id, null)
+    await load()
+  }
+
+  const myArtists      = artists.filter((a) => a.agent_id === user?.id)
+  const available      = artists.filter((a) => !a.agent_id)
+  const claimedByOther = artists.filter((a) => a.agent_id && a.agent_id !== user?.id)
+
+  const cardProps = { user, isAdmin, onEdit: setEditing, onClaim: handleClaim, onRelease: handleRelease }
 
   return (
     <div className="px-4 py-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Artists</h1>
-          <p className="text-gray-500 mt-1">Your represented roster</p>
+          <p className="text-gray-500 mt-1">{isAdmin ? 'All artists' : 'Your roster'}</p>
         </div>
         {isAdmin && (
           <button className="rounded-xl bg-indigo-600 text-white text-sm font-medium px-4 py-2 hover:bg-indigo-700 transition-colors">
@@ -172,17 +251,49 @@ export default function Artists() {
 
       {loading ? (
         <p className="text-xs text-gray-400">Loading…</p>
+      ) : isAdmin ? (
+        // Admin: see all artists grouped by status
+        <>
+          <Section title={`Represented (${artists.filter(a => a.agent_id).length})`} empty="None yet">
+            {artists.filter(a => a.agent_id).length > 0 && (
+              <div className="space-y-4">
+                {artists.filter(a => a.agent_id).map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+              </div>
+            )}
+          </Section>
+          <Section title={`Unclaimed (${available.length})`} empty="None">
+            {available.length > 0 && (
+              <div className="space-y-4">
+                {available.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+              </div>
+            )}
+          </Section>
+        </>
       ) : (
-        <div className="space-y-4">
-          {artists.map((artist) => (
-            <ArtistCard
-              key={artist.id}
-              artist={artist}
-              isAdmin={isAdmin}
-              onEdit={setEditing}
-            />
-          ))}
-        </div>
+        // Agent: my roster + available to claim
+        <>
+          <Section title={`My Roster (${myArtists.length})`} empty="You haven't claimed any artists yet.">
+            {myArtists.length > 0 && (
+              <div className="space-y-4">
+                {myArtists.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+              </div>
+            )}
+          </Section>
+          <Section title={`Available (${available.length})`} empty="No unclaimed artists at this time.">
+            {available.length > 0 && (
+              <div className="space-y-4">
+                {available.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+              </div>
+            )}
+          </Section>
+          {claimedByOther.length > 0 && (
+            <Section title={`Represented by others (${claimedByOther.length})`} empty="">
+              <div className="space-y-4">
+                {claimedByOther.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+              </div>
+            </Section>
+          )}
+        </>
       )}
 
       <BottomSheet
@@ -193,7 +304,7 @@ export default function Artists() {
         {editing && (
           <EditArtistForm
             artist={editing}
-            onSave={handleSave}
+            onSave={async () => { setEditing(null); await load() }}
             onClose={() => setEditing(null)}
           />
         )}
