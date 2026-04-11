@@ -28,6 +28,110 @@ async function setAgentId(artistId, agentId) {
   if (error) throw error
 }
 
+function initials(name) {
+  return name.trim().split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+}
+
+function AddArtistForm({ agentId, onSave, onClose }) {
+  const [draft, setDraft] = useState({
+    name: '', genre: '', min_booking_fee: '', favorite_cities: [], spotify_url: '', avatar_initials: '',
+  })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function set(field, value) {
+    setDraft((d) => ({
+      ...d,
+      [field]: value,
+      // Auto-update initials as name changes
+      ...(field === 'name' ? { avatar_initials: initials(value) } : {}),
+    }))
+  }
+
+  async function handleSave() {
+    if (!draft.name.trim()) { setError('Name is required.'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const { error: err } = await supabase.from('artists').insert({
+        name: draft.name.trim(),
+        genre: draft.genre.trim(),
+        min_booking_fee: Number(draft.min_booking_fee) || 0,
+        favorite_cities: draft.favorite_cities,
+        spotify_url: draft.spotify_url.trim(),
+        avatar_initials: draft.avatar_initials || initials(draft.name),
+        agent_id: agentId ?? null,
+      })
+      if (err) throw err
+      onSave()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4 pb-4">
+      {[
+        { label: 'Artist / Act name', field: 'name' },
+        { label: 'Genre',             field: 'genre' },
+        { label: 'Spotify URL',       field: 'spotify_url', type: 'url' },
+      ].map(({ label, field, type = 'text' }) => (
+        <div key={field}>
+          <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+          <input
+            type={type}
+            value={draft[field]}
+            onChange={(e) => set(field, e.target.value)}
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+      ))}
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Min. booking fee ($)</label>
+        <input
+          type="number"
+          value={draft.min_booking_fee}
+          onChange={(e) => set('min_booking_fee', e.target.value)}
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1">Favorite cities (comma-separated)</label>
+        <input
+          type="text"
+          value={draft.favorite_cities.join(', ')}
+          onChange={(e) =>
+            set('favorite_cities', e.target.value.split(',').map((c) => c.trim()).filter(Boolean))
+          }
+          className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+      </div>
+
+      {error && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
+
+      <div className="flex gap-2 pt-2">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 hover:bg-indigo-700 transition-colors disabled:opacity-60"
+        >
+          {saving ? 'Saving…' : 'Add artist'}
+        </button>
+        <button
+          onClick={onClose}
+          className="flex-1 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold py-2.5 hover:bg-gray-200 transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function EditArtistForm({ artist, onSave, onClose }) {
   const [draft, setDraft] = useState({ ...artist })
 
@@ -207,6 +311,7 @@ export default function Artists() {
   const [artists, setArtists] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -242,11 +347,12 @@ export default function Artists() {
           <h1 className="text-3xl font-bold text-gray-900">Artists</h1>
           <p className="text-gray-500 mt-1">{isAdmin ? 'All artists' : 'Your roster'}</p>
         </div>
-        {isAdmin && (
-          <button className="rounded-xl bg-indigo-600 text-white text-sm font-medium px-4 py-2 hover:bg-indigo-700 transition-colors">
-            + Add
-          </button>
-        )}
+        <button
+          onClick={() => setAdding(true)}
+          className="rounded-xl bg-indigo-600 text-white text-sm font-medium px-4 py-2 hover:bg-indigo-700 transition-colors"
+        >
+          + Add
+        </button>
       </div>
 
       {loading ? (
@@ -295,6 +401,18 @@ export default function Artists() {
           )}
         </>
       )}
+
+      <BottomSheet
+        open={adding}
+        onClose={() => setAdding(false)}
+        title="Add Artist"
+      >
+        <AddArtistForm
+          agentId={isAdmin ? null : user?.id}
+          onSave={async () => { setAdding(false); await load() }}
+          onClose={() => setAdding(false)}
+        />
+      </BottomSheet>
 
       <BottomSheet
         open={!!editing}
