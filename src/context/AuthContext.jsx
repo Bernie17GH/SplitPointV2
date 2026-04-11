@@ -1,64 +1,84 @@
-import { createContext, useContext, useState } from 'react'
-import { readProfile, writeProfile } from '../services/db'
+import { createContext, useContext, useState, useEffect } from 'react'
+import { supabase } from '../services/supabase'
 
-// Credential registry — only email/password/role live here.
-// All editable profile fields are stored in the Supabase profiles table.
-const MOCK_USERS = [
-  {
-    id: 1,
-    name: 'SplitPoint Admin',
-    email: 'admin@splitpoint.com',
-    password: 'admin123',
-    role: 'admin',
-    agency: 'SplitPoint',
-    phone: '',
-  },
-]
-
-const SESSION_KEY = 'sp_session'
 const AuthContext = createContext(null)
 
-function loadSession() {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
+async function fetchProfile(authUser) {
+  const { data } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', authUser.id)
+    .maybeSingle()
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    ...(data ?? {}),
   }
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(loadSession)
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    // Load session on mount
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        setUser(await fetchProfile(session.user))
+      }
+      setLoading(false)
+    })
+
+    // Keep in sync with Supabase auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(await fetchProfile(session.user))
+        } else {
+          setUser(null)
+        }
+        setLoading(false)
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   async function signIn(email, password) {
-    const match = MOCK_USERS.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    )
-    if (!match) throw new Error('Invalid email or password.')
-
-    const { password: _, ...baseUser } = match
-    // Merge with any profile edits saved to Supabase
-    const saved = await readProfile(baseUser.id)
-    const sessionUser = { ...baseUser, ...(saved ?? {}) }
-
-    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionUser))
-    setUser(sessionUser)
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error) throw new Error(error.message)
+    // user state is set by onAuthStateChange
   }
 
-  function signOut() {
-    localStorage.removeItem(SESSION_KEY)
+  async function signUp(email, password, profileData) {
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (error) throw new Error(error.message)
+    if (data.user) {
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: data.user.id,
+        email,
+        role: 'agent',
+        ...profileData,
+      })
+      if (profileError) throw new Error(profileError.message)
+    }
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut()
     setUser(null)
   }
 
   async function updateUser(fields) {
-    const updated = { ...user, ...fields }
-    await writeProfile(user.id, updated)
-    localStorage.setItem(SESSION_KEY, JSON.stringify(updated))
-    setUser(updated)
+    const { error } = await supabase
+      .from('profiles')
+      .upsert({ ...user, ...fields })
+    if (error) throw new Error(error.message)
+    setUser((prev) => ({ ...prev, ...fields }))
   }
 
   return (
-    <AuthContext.Provider value={{ user, signIn, signOut, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, updateUser }}>
       {children}
     </AuthContext.Provider>
   )
