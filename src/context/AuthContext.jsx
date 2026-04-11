@@ -4,15 +4,22 @@ import { supabase } from '../services/supabase'
 const AuthContext = createContext(null)
 
 async function fetchProfile(authUser) {
-  const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', authUser.id)
-    .maybeSingle()
-  return {
-    id: authUser.id,
-    email: authUser.email,
-    ...(data ?? {}),
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', authUser.id)
+      .maybeSingle()
+    if (error) console.warn('fetchProfile error:', error.message)
+    return {
+      id: authUser.id,
+      email: authUser.email,
+      ...(data ?? {}),
+    }
+  } catch (e) {
+    console.warn('fetchProfile threw:', e)
+    // Return a minimal user so the app doesn't stay stuck
+    return { id: authUser.id, email: authUser.email }
   }
 }
 
@@ -21,23 +28,29 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Load session on mount
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        setUser(await fetchProfile(session.user))
-      }
-      setLoading(false)
-    })
+    // Load existing session on mount
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (session?.user) setUser(await fetchProfile(session.user))
+      })
+      .catch((e) => console.warn('getSession error:', e))
+      .finally(() => setLoading(false))
 
-    // Keep in sync with Supabase auth state
+    // Stay in sync with auth state changes (sign in, sign out, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (session?.user) {
-          setUser(await fetchProfile(session.user))
-        } else {
+        try {
+          if (session?.user) {
+            setUser(await fetchProfile(session.user))
+          } else {
+            setUser(null)
+          }
+        } catch (e) {
+          console.warn('onAuthStateChange error:', e)
           setUser(null)
+        } finally {
+          setLoading(false)
         }
-        setLoading(false)
       }
     )
 
@@ -47,7 +60,6 @@ export function AuthProvider({ children }) {
   async function signIn(email, password) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new Error(error.message)
-    // user state is set by onAuthStateChange
   }
 
   async function signUp(email, password, profileData) {
