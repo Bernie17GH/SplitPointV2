@@ -240,7 +240,7 @@ function ArtistCard({ artist, user, isAdmin, onEdit, onClaim, onRelease }) {
           <p className="text-sm text-gray-400">{artist.genre}</p>
         </div>
         <div className="ml-auto flex items-center gap-3 shrink-0">
-          {isAdmin && (
+          {(isAdmin || isMine) && (
             <button
               onClick={() => onEdit(artist)}
               className="text-xs text-indigo-600 font-medium hover:text-indigo-700"
