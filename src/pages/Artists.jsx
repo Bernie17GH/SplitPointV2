@@ -12,12 +12,27 @@ function SpotifyIcon() {
 }
 
 async function fetchAllArtists() {
-  const { data, error } = await supabase
+  const { data: artists, error } = await supabase
     .from('artists')
-    .select('*, profiles(name, agency)')
+    .select('*')
     .order('name')
   if (error) throw error
-  return data
+
+  // Fetch profiles for any agents who have claimed artists
+  const agentIds = [...new Set(artists.filter((a) => a.agent_id).map((a) => a.agent_id))]
+  let profileMap = {}
+  if (agentIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, name, agency')
+      .in('id', agentIds)
+    profiles?.forEach((p) => { profileMap[p.id] = p })
+  }
+
+  return artists.map((a) => ({
+    ...a,
+    profiles: a.agent_id ? (profileMap[a.agent_id] ?? null) : null,
+  }))
 }
 
 async function setAgentId(artistId, agentId) {
