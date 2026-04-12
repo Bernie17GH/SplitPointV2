@@ -113,18 +113,25 @@ function EditVenueForm({ venue, onSave, onClose }) {
 }
 
 function VenueCard({ venue, isAdmin, onEdit }) {
-  const capacityLabel = new Intl.NumberFormat('en-US').format(venue.capacity)
+  const capacityLabel = venue.capacity
+    ? new Intl.NumberFormat('en-US').format(venue.capacity)
+    : null
+  const genres = venue.genres ?? []
+  const availStyle = AVAILABILITY_STYLES[venue.availability] ?? AVAILABILITY_STYLES.unconfirmed
+  const availLabel = AVAILABILITY_LABELS[venue.availability] ?? 'Unconfirmed'
 
   return (
     <div className="rounded-2xl bg-white shadow-sm border border-gray-100 p-5">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <p className="font-semibold text-gray-900 leading-tight">{venue.name}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{venue.neighborhood} · {venue.city}, {venue.state}</p>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {[venue.neighborhood, venue.city, venue.state].filter(Boolean).join(' · ')}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${AVAILABILITY_STYLES[venue.availability]}`}>
-            {AVAILABILITY_LABELS[venue.availability]}
+          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${availStyle}`}>
+            {availLabel}
           </span>
           {isAdmin && (
             <button
@@ -137,38 +144,50 @@ function VenueCard({ venue, isAdmin, onEdit }) {
         </div>
       </div>
 
-      <p className="text-xs text-gray-400 mb-3">{venue.address}, {venue.city}, {venue.state} {venue.zip}</p>
+      <p className="text-xs text-gray-400 mb-3">
+        {[venue.address, venue.city, venue.state, venue.zip].filter(Boolean).join(', ')}
+      </p>
 
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5 text-sm">
           <span className="text-gray-400">Capacity</span>
-          <span className="font-semibold text-gray-900">{capacityLabel}</span>
+          <span className="font-semibold text-gray-900">{capacityLabel ?? '—'}</span>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href={`tel:${venue.phone.replace(/\D/g, '')}`}
-            className="text-xs text-gray-500 hover:text-gray-700 font-medium"
-          >
-            {venue.phone}
-          </a>
-          <a
-            href={venue.website}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
-          >
-            Website ↗
-          </a>
+          {venue.phone ? (
+            <a
+              href={`tel:${venue.phone.replace(/\D/g, '')}`}
+              className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+            >
+              {venue.phone}
+            </a>
+          ) : (
+            <span className="text-xs text-gray-300">No phone</span>
+          )}
+          {venue.website ? (
+            <a
+              href={venue.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+            >
+              Website ↗
+            </a>
+          ) : (
+            <span className="text-xs text-gray-300">No website</span>
+          )}
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 mb-3">
-        {venue.genres.map((g) => (
-          <span key={g} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs">
-            {g}
-          </span>
-        ))}
-      </div>
+      {genres.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {genres.map((g) => (
+            <span key={g} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-xs">
+              {g}
+            </span>
+          ))}
+        </div>
+      )}
 
       {venue.notes && (
         <p className="text-xs text-gray-400 leading-relaxed border-t border-gray-50 pt-3">
