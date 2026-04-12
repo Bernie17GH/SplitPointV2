@@ -474,8 +474,10 @@ export default function TourDetail() {
       )
 
       // Batch all stop updates + tour counter in two parallel calls
-      const stopUpdates = orderedStops.map((ws, i) => ({
-        id:                     ws.id,
+      const stopUpdates = orderedFullStops.map((stop, i) => ({
+        id:                     stop.id,
+        tour_id:                stop.tour_id,
+        venue_id:               stop.venue_id,
         sequence_order:         i,
         arrival_date:           dated[i].arrival_date,
         departure_date:         dated[i].departure_date,
