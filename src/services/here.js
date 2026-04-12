@@ -1,7 +1,5 @@
-// VITE_HERE_MAPS_KEY  — HERE Maps JS SDK (map tile rendering)
-// VITE_HERE_API_KEY   — HERE REST APIs (geocoding, routing)
-const MAPS_KEY = import.meta.env.VITE_HERE_MAPS_KEY // eslint-disable-line no-unused-vars
-const REST_KEY  = import.meta.env.VITE_HERE_API_KEY
+// Single key for all HERE calls (REST geocoding, routing, and Maps JS SDK)
+const REST_KEY = import.meta.env.VITE_HERE_API_KEY
 
 /**
  * HERE Geocoding only — location fields (geocode, address, neighborhood, city, state, zip).

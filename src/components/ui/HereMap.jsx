@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-const KEY = import.meta.env.VITE_HERE_MAPS_KEY
+const KEY = import.meta.env.VITE_HERE_API_KEY
 
 const SCRIPTS = [
   'https://js.api.here.com/v3/3.1/mapsjs-core.js',
