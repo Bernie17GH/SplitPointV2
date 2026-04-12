@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
+import { lookupVenueDetails } from '../services/here'
 
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
@@ -375,6 +376,403 @@ function UserManagementSection({ currentUserId }) {
   )
 }
 
+// ─── Venue Cleanup section (admin only) ──────────────────────────────────────
+
+const VENUE_SORT_OPTS = [
+  { key: 'name',     label: 'Name' },
+  { key: 'city',     label: 'City' },
+  { key: 'state',    label: 'State' },
+  { key: 'capacity', label: 'Cap' },
+]
+
+const ENRICH_FIELDS = [
+  { key: 'geocode', label: 'Geocode' },
+  { key: 'phone',   label: 'Phone'   },
+  { key: 'website', label: 'Website' },
+]
+
+const MISSING_FILTERS = [
+  { key: null,       label: 'All' },
+  { key: 'geocode',  label: 'No geo' },
+  { key: 'phone',    label: 'No phone' },
+  { key: 'website',  label: 'No website' },
+]
+
+function VenueResultCard({ result, enrichFields, onToggleAccept }) {
+  const { venue, found, accepted, error } = result
+
+  return (
+    <div className={`rounded-xl border p-3 ${error ? 'border-red-100 bg-red-50' : 'border-gray-100 bg-white'}`}>
+      <p className="text-sm font-semibold text-gray-900 leading-tight">{venue.name}</p>
+      <p className="text-xs text-gray-400 mb-2">{venue.city}, {venue.state}</p>
+
+      {error ? (
+        <p className="text-xs text-red-500">{error}</p>
+      ) : (
+        <div className="space-y-2">
+          {found._matchedTitle && found._matchedTitle !== venue.name && (
+            <p className="text-xs text-gray-400 italic">Matched: "{found._matchedTitle}"</p>
+          )}
+          {enrichFields.map(field => {
+            const currentVal = field === 'geocode'
+              ? (venue.lat != null ? `${Number(venue.lat).toFixed(5)}, ${Number(venue.lng).toFixed(5)}` : null)
+              : venue[field]
+            const foundVal = field === 'geocode'
+              ? (found.lat != null ? `${found.lat.toFixed(5)}, ${found.lng.toFixed(5)}` : null)
+              : found[field]
+
+            if (!foundVal) {
+              return (
+                <div key={field} className="flex items-center justify-between py-0.5">
+                  <span className="text-xs text-gray-400 capitalize">{field}</span>
+                  <span className="text-xs text-gray-300 italic">not found</span>
+                </div>
+              )
+            }
+
+            const unchanged = foundVal === currentVal
+            return (
+              <div key={field} className={`rounded-lg px-3 py-2 ${unchanged ? 'bg-gray-50' : 'bg-white border border-gray-100'}`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-medium text-gray-600 capitalize">{field}</span>
+                  {unchanged ? (
+                    <span className="text-xs text-gray-400 italic">unchanged</span>
+                  ) : (
+                    <button
+                      onClick={() => onToggleAccept(venue.id, field)}
+                      className={`text-xs px-2 py-0.5 rounded-lg font-medium transition-colors ${
+                        accepted[field]
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {accepted[field] ? '✓ Apply' : 'Skip'}
+                    </button>
+                  )}
+                </div>
+                <p className={`text-xs truncate ${unchanged ? 'text-gray-500' : 'text-indigo-600 font-medium'}`}>
+                  {foundVal}
+                </p>
+                {!unchanged && (
+                  <p className="text-xs text-gray-300 truncate mt-0.5">
+                    {currentVal ? `was: ${currentVal}` : 'was empty'}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VenueCleanupSection() {
+  const [venues, setVenues]           = useState([])
+  const [loading, setLoading]         = useState(true)
+  const [sortKey, setSortKey]         = useState('name')
+  const [sortDir, setSortDir]         = useState('asc')
+  const [missingFilter, setMissingFilter] = useState(null)
+  const [checkedIds, setCheckedIds]   = useState(new Set())
+  const [enrichFields, setEnrichFields] = useState(new Set(['geocode', 'phone', 'website']))
+  const [phase, setPhase]             = useState('select') // 'select' | 'working' | 'review'
+  const [progress, setProgress]       = useState({ done: 0, total: 0 })
+  const [results, setResults]         = useState([])
+  const [applying, setApplying]       = useState(false)
+  const [toast, setToast]             = useState('')
+
+  useEffect(() => {
+    supabase.from('venues')
+      .select('id, name, address, city, state, zip, phone, website, capacity, lat, lng')
+      .order('name')
+      .then(({ data }) => { setVenues(data ?? []); setLoading(false) })
+  }, [])
+
+  const displayed = useMemo(() => {
+    let list = [...venues]
+    if (missingFilter === 'geocode')  list = list.filter(v => !v.lat || !v.lng)
+    if (missingFilter === 'phone')    list = list.filter(v => !v.phone)
+    if (missingFilter === 'website')  list = list.filter(v => !v.website)
+    list.sort((a, b) => {
+      const va = a[sortKey] ?? '', vb = b[sortKey] ?? ''
+      if (sortKey === 'capacity') return sortDir === 'asc' ? va - vb : vb - va
+      return sortDir === 'asc'
+        ? String(va).localeCompare(String(vb))
+        : String(vb).localeCompare(String(va))
+    })
+    return list
+  }, [venues, missingFilter, sortKey, sortDir])
+
+  const allChecked = displayed.length > 0 && displayed.every(v => checkedIds.has(v.id))
+
+  function toggleSortKey(key) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  function toggleCheck(id) {
+    setCheckedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+
+  function toggleAllDisplayed() {
+    if (allChecked) {
+      setCheckedIds(prev => { const n = new Set(prev); displayed.forEach(v => n.delete(v.id)); return n })
+    } else {
+      setCheckedIds(prev => new Set([...prev, ...displayed.map(v => v.id)]))
+    }
+  }
+
+  function toggleEnrichField(key) {
+    setEnrichFields(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
+  }
+
+  async function handleLookUp() {
+    const selected = venues.filter(v => checkedIds.has(v.id))
+    if (!selected.length || !enrichFields.size) return
+    setPhase('working')
+    setProgress({ done: 0, total: selected.length })
+    const fieldList = [...enrichFields]
+    const newResults = []
+    for (const venue of selected) {
+      let found = {}, error = null
+      try {
+        found = await lookupVenueDetails(venue, fieldList)
+      } catch (err) {
+        error = err.message
+      }
+      // Default-accept any field that returned a value
+      const accepted = {}
+      for (const f of fieldList) {
+        if (f === 'geocode') accepted.geocode = found.lat != null
+        else accepted[f] = !!found[f]
+      }
+      newResults.push({ venue, found, accepted, error })
+      setProgress(p => ({ ...p, done: p.done + 1 }))
+      await new Promise(r => setTimeout(r, 150))
+    }
+    setResults(newResults)
+    setPhase('review')
+  }
+
+  function toggleAccept(venueId, field) {
+    setResults(prev => prev.map(r =>
+      r.venue.id === venueId
+        ? { ...r, accepted: { ...r.accepted, [field]: !r.accepted[field] } }
+        : r
+    ))
+  }
+
+  async function handleApplyAll() {
+    setApplying(true)
+    let saved = 0
+    for (const r of results) {
+      if (r.error) continue
+      const updates = {}
+      if (r.accepted.geocode  && r.found.lat != null) { updates.lat = r.found.lat; updates.lng = r.found.lng }
+      if (r.accepted.phone    && r.found.phone)   updates.phone   = r.found.phone
+      if (r.accepted.website  && r.found.website) updates.website = r.found.website
+      if (!Object.keys(updates).length) continue
+      const { error } = await supabase.from('venues').update(updates).eq('id', r.venue.id)
+      if (!error) {
+        setVenues(prev => prev.map(v => v.id === r.venue.id ? { ...v, ...updates } : v))
+        saved++
+      }
+    }
+    setApplying(false)
+    setPhase('select')
+    setCheckedIds(new Set())
+    setResults([])
+    setToast(`${saved} venue${saved !== 1 ? 's' : ''} updated.`)
+    setTimeout(() => setToast(''), 4000)
+  }
+
+  if (loading) return <p className="pt-2 text-sm text-gray-400">Loading venues…</p>
+
+  // ── Working ──
+  if (phase === 'working') {
+    const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0
+    return (
+      <div className="pt-4 space-y-3">
+        <p className="text-sm font-medium text-gray-700">Looking up venues…</p>
+        <div className="w-full bg-gray-100 rounded-full h-2.5">
+          <div className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-xs text-gray-400">{progress.done} of {progress.total}</p>
+      </div>
+    )
+  }
+
+  // ── Review ──
+  if (phase === 'review') {
+    const hasAny = results.some(r => !r.error && Object.values(r.accepted).some(Boolean))
+    const fieldList = [...enrichFields]
+    return (
+      <div className="pt-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium text-gray-700">
+            {results.length} result{results.length !== 1 ? 's' : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPhase('select')} className="text-xs text-gray-500 font-medium">
+              ← Back
+            </button>
+            <button
+              onClick={handleApplyAll}
+              disabled={applying || !hasAny}
+              className="rounded-xl bg-indigo-600 text-white text-xs font-semibold px-4 py-1.5 disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+            >
+              {applying ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </div>
+        <div className="space-y-3 max-h-[28rem] overflow-y-auto pb-1">
+          {results.map(r => (
+            <VenueResultCard
+              key={r.venue.id}
+              result={r}
+              enrichFields={fieldList}
+              onToggleAccept={toggleAccept}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Select ──
+  return (
+    <div className="pt-3 space-y-3">
+      {toast && (
+        <p className="text-sm text-green-700 bg-green-50 rounded-xl px-3 py-2">{toast}</p>
+      )}
+
+      {/* Sort */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs text-gray-400 mr-1">Sort:</span>
+        {VENUE_SORT_OPTS.map(o => (
+          <button
+            key={o.key}
+            onClick={() => toggleSortKey(o.key)}
+            className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+              sortKey === o.key ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {o.label}{sortKey === o.key ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''}
+          </button>
+        ))}
+      </div>
+
+      {/* Missing filter */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-xs text-gray-400 mr-1">Show:</span>
+        {MISSING_FILTERS.map(f => (
+          <button
+            key={String(f.key)}
+            onClick={() => { setMissingFilter(f.key); setCheckedIds(new Set()) }}
+            className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${
+              missingFilter === f.key ? 'bg-gray-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* List header */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-400">
+          {displayed.length} venue{displayed.length !== 1 ? 's' : ''}
+          {checkedIds.size > 0 && <span className="text-indigo-600 font-medium"> · {checkedIds.size} selected</span>}
+        </p>
+        <button onClick={toggleAllDisplayed} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">
+          {allChecked ? 'Deselect all' : 'Select all'}
+        </button>
+      </div>
+
+      {/* Venue list */}
+      <div className="space-y-1.5 max-h-64 overflow-y-auto">
+        {displayed.map(v => {
+          const checked = checkedIds.has(v.id)
+          const badges = [
+            (!v.lat || !v.lng) && 'geo',
+            !v.phone            && 'ph',
+            !v.website          && 'web',
+          ].filter(Boolean)
+          return (
+            <button
+              key={v.id}
+              onClick={() => toggleCheck(v.id)}
+              className={`w-full rounded-xl border px-3 py-2.5 text-left flex items-center gap-3 transition-colors ${
+                checked ? 'bg-indigo-50 border-indigo-300' : 'bg-gray-50 border-gray-100 hover:border-indigo-200'
+              }`}
+            >
+              <span className={`h-5 w-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                checked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 bg-white'
+              }`}>
+                {checked && (
+                  <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                  </svg>
+                )}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{v.name}</p>
+                <p className="text-xs text-gray-400">
+                  {v.city}, {v.state}
+                  {v.capacity ? ` · ${v.capacity.toLocaleString()}` : ''}
+                </p>
+              </div>
+              {badges.length > 0 && (
+                <div className="flex gap-1 shrink-0">
+                  {badges.map(b => (
+                    <span key={b} className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium">
+                      {b}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </button>
+          )
+        })}
+        {displayed.length === 0 && (
+          <p className="text-xs text-gray-400 text-center py-4">No venues match this filter.</p>
+        )}
+      </div>
+
+      {/* Field picker */}
+      <div className="border-t border-gray-50 pt-3 space-y-2">
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Fields to look up</p>
+        <div className="flex gap-2">
+          {ENRICH_FIELDS.map(f => (
+            <button
+              key={f.key}
+              onClick={() => toggleEnrichField(f.key)}
+              className={`flex-1 text-xs py-2 rounded-xl font-medium border transition-colors ${
+                enrichFields.has(f.key)
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Action */}
+      <button
+        onClick={handleLookUp}
+        disabled={checkedIds.size === 0 || enrichFields.size === 0}
+        className="w-full rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 hover:bg-indigo-700 transition-colors disabled:opacity-50"
+      >
+        {checkedIds.size > 0
+          ? `Look Up ${checkedIds.size} Venue${checkedIds.size !== 1 ? 's' : ''}`
+          : 'Select venues to look up'}
+      </button>
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Settings() {
@@ -410,6 +808,12 @@ export default function Settings() {
       {isAdmin && (
         <Section title="User Management" icon="🛡️">
           <UserManagementSection currentUserId={user.id} />
+        </Section>
+      )}
+
+      {isAdmin && (
+        <Section title="Venue Data Cleanup" icon="🗂️">
+          <VenueCleanupSection />
         </Section>
       )}
 

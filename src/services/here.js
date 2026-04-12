@@ -1,6 +1,39 @@
 const KEY = import.meta.env.VITE_HERE_MAPS_KEY
 
 /**
+ * Look up venue details via HERE Discover (POI search).
+ * fields: array containing any of 'geocode' | 'phone' | 'website'
+ * Returns an object with the requested fields populated (null if not found).
+ */
+export async function lookupVenueDetails(venue, fields) {
+  const q = [venue.name, venue.city, venue.state].filter(Boolean).join(' ')
+  let url = `https://discover.search.hereapi.com/v1/discover`
+    + `?q=${encodeURIComponent(q)}&limit=1&apiKey=${KEY}`
+  // Anchor search to known coordinates when available; otherwise restrict to USA
+  if (venue.lat && venue.lng) url += `&at=${venue.lat},${venue.lng}`
+  else url += `&in=countryCode:USA`
+
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`HERE ${res.status}`)
+  const data = await res.json()
+  const item = data.items?.[0]
+  if (!item) throw new Error('No result found')
+
+  const result = { _matchedTitle: item.title }
+  if (fields.includes('geocode')) {
+    result.lat = item.position?.lat ?? null
+    result.lng = item.position?.lng ?? null
+  }
+  if (fields.includes('phone')) {
+    result.phone = item.contacts?.[0]?.phone?.[0]?.value ?? null
+  }
+  if (fields.includes('website')) {
+    result.website = item.contacts?.[0]?.www?.[0]?.value ?? null
+  }
+  return result
+}
+
+/**
  * Geocode a full address string → { lat, lng, formattedAddress }
  */
 export async function geocodeAddress(address) {
