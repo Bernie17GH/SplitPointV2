@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { timeStrToHour, hourToTimeStr } from '../services/tourDates'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
@@ -65,8 +66,11 @@ const EMPTY_FORM = {
   start_date: '',
   end_date: '',
   is_end_date_fixed: false,
-  default_rest_days: 1,
-  default_buffer_days: 1,
+  default_rest_days: 0,
+  default_show_start_hour: 20,
+  default_show_duration_hours: 2,
+  default_production_setup_hours: 4,
+  default_breakdown_hours: 2,
   lineup: [],
 }
 
@@ -158,7 +162,10 @@ function NewTourSheet({ open, onClose, onCreated, artists }) {
           end_date: form.end_date || null,
           is_end_date_fixed: form.is_end_date_fixed,
           default_rest_days: form.default_rest_days,
-          default_buffer_days: form.default_buffer_days,
+          default_show_start_hour: form.default_show_start_hour,
+          default_show_duration_hours: form.default_show_duration_hours,
+          default_production_setup_hours: form.default_production_setup_hours,
+          default_breakdown_hours: form.default_breakdown_hours,
           status: 'draft',
           created_by: user.id,
         })
@@ -235,19 +242,44 @@ function NewTourSheet({ open, onClose, onCreated, artists }) {
         {step === 2 && (
           <>
             <p className="text-sm text-gray-500">These defaults apply to every stop. You can override them per-stop in the tour builder.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Show Start Time</label>
+                <input type="time" step="1800"
+                  value={hourToTimeStr(form.default_show_start_hour)}
+                  onChange={e => set('default_show_start_hour', timeStrToHour(e.target.value))}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Show Duration (hrs)</label>
+                <input type="number" min="0.5" max="6" step="0.5"
+                  value={form.default_show_duration_hours}
+                  onChange={e => set('default_show_duration_hours', parseFloat(e.target.value) || 2)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Production Setup (hrs)</label>
+                <input type="number" min="0.5" max="12" step="0.5"
+                  value={form.default_production_setup_hours}
+                  onChange={e => set('default_production_setup_hours', parseFloat(e.target.value) || 4)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <p className="text-xs text-gray-400 mt-1">Before show start</p>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Breakdown (hrs)</label>
+                <input type="number" min="0.5" max="6" step="0.5"
+                  value={form.default_breakdown_hours}
+                  onChange={e => set('default_breakdown_hours', parseFloat(e.target.value) || 2)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <p className="text-xs text-gray-400 mt-1">After show ends</p>
+              </div>
+            </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Default Rest Days at each venue</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Rest Days per venue</label>
               <input type="number" min="0" max="14" value={form.default_rest_days}
                 onChange={e => set('default_rest_days', parseInt(e.target.value) || 0)}
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              <p className="text-xs text-gray-400 mt-1">Days the artist performs / stays at each stop</p>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Default Buffer Days between stops</label>
-              <input type="number" min="0" max="14" value={form.default_buffer_days}
-                onChange={e => set('default_buffer_days', parseInt(e.target.value) || 0)}
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-              <p className="text-xs text-gray-400 mt-1">Travel / off days before arriving at the next stop</p>
+              <p className="text-xs text-gray-400 mt-1">Extra days at venue for multi-night residencies (0 = single show)</p>
             </div>
           </>
         )}

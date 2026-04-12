@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { geocodeAddress, optimizeRoute } from '../services/here'
-import { computeTourDates, formatDateRange } from '../services/tourDates'
+import { computeTourDates, formatDateRange, formatHour, timeStrToHour, hourToTimeStr } from '../services/tourDates'
 import BottomSheet from '../components/ui/BottomSheet'
 import HereMap from '../components/ui/HereMap'
 
@@ -45,11 +45,15 @@ function StopCard({ stop, seq, onPin, onRemove }) {
           {stop.travel_hours_from_prev != null && (
             <p className="text-xs text-gray-500">Drive from previous: <span className="font-medium">{stop.travel_hours_from_prev}h</span></p>
           )}
-          <p className="text-xs text-gray-500">
-            Rest days: <span className="font-medium">{stop.rest_days ?? '(tour default)'}</span>
-            {'  ·  '}
-            Buffer days: <span className="font-medium">{stop.buffer_days ?? '(tour default)'}</span>
-          </p>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <p className="text-xs text-gray-500">Show time: <span className="font-medium">{formatHour(stop.show_start_hour) ?? '(tour default)'}</span></p>
+            <p className="text-xs text-gray-500">Duration: <span className="font-medium">{stop.show_duration_hours != null ? `${stop.show_duration_hours}h` : '(tour default)'}</span></p>
+            <p className="text-xs text-gray-500">Setup: <span className="font-medium">{stop.production_setup_hours != null ? `${stop.production_setup_hours}h` : '(tour default)'}</span></p>
+            <p className="text-xs text-gray-500">Breakdown: <span className="font-medium">{stop.breakdown_hours != null ? `${stop.breakdown_hours}h` : '(tour default)'}</span></p>
+            {(stop.rest_days ?? 0) > 0 && (
+              <p className="text-xs text-gray-500 col-span-2">Rest days: <span className="font-medium">{stop.rest_days}</span></p>
+            )}
+          </div>
           {venue?.address && <p className="text-xs text-gray-500">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>}
           <div className="flex gap-2 pt-1">
             <button onClick={() => onPin(stop)}
@@ -84,14 +88,17 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
   const [newVenue, setNewVenue] = useState({
     name: '', address: '', city: '', state: '', zip: '',
   })
-  const [stopOpts, setStopOpts] = useState({ rest_days: '', buffer_days: '', is_fixed: false })
+  const [stopOpts, setStopOpts] = useState({
+    rest_days: '', show_start_hour: '', show_duration_hours: '',
+    production_setup_hours: '', breakdown_hours: '', is_fixed: false,
+  })
 
   useEffect(() => {
     if (!open) {
       setQuery(''); setResults([]); setMode('search')
       setCheckedIds(new Set()); setError(''); setSaving(false)
       setNewVenue({ name: '', address: '', city: '', state: '', zip: '' })
-      setStopOpts({ rest_days: '', buffer_days: '', is_fixed: false })
+      setStopOpts({ rest_days: '', show_start_hour: '', show_duration_hours: '', production_setup_hours: '', breakdown_hours: '', is_fixed: false })
     }
   }, [open])
 
@@ -145,12 +152,15 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
       }))
 
       const rows = geocoded.map(v => ({
-        tour_id:        tourId,
-        venue_id:       v.id,
-        sequence_order: 9999,
-        rest_days:      stopOpts.rest_days   ? parseInt(stopOpts.rest_days)   : null,
-        buffer_days:    stopOpts.buffer_days ? parseInt(stopOpts.buffer_days) : null,
-        is_fixed:       stopOpts.is_fixed,
+        tour_id:                 tourId,
+        venue_id:                v.id,
+        sequence_order:          9999,
+        rest_days:               stopOpts.rest_days               ? parseInt(stopOpts.rest_days)                : null,
+        show_start_hour:         stopOpts.show_start_hour         ? parseFloat(stopOpts.show_start_hour)        : null,
+        show_duration_hours:     stopOpts.show_duration_hours     ? parseFloat(stopOpts.show_duration_hours)    : null,
+        production_setup_hours:  stopOpts.production_setup_hours  ? parseFloat(stopOpts.production_setup_hours) : null,
+        breakdown_hours:         stopOpts.breakdown_hours         ? parseFloat(stopOpts.breakdown_hours)        : null,
+        is_fixed:                stopOpts.is_fixed,
       }))
 
       const { error: insertErr } = await supabase.from('tour_stops').insert(rows)
@@ -174,12 +184,15 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
         .select().single()
       if (vErr) throw vErr
       await supabase.from('tour_stops').insert({
-        tour_id:        tourId,
-        venue_id:       venue.id,
-        sequence_order: 9999,
-        rest_days:      stopOpts.rest_days   ? parseInt(stopOpts.rest_days)   : null,
-        buffer_days:    stopOpts.buffer_days ? parseInt(stopOpts.buffer_days) : null,
-        is_fixed:       stopOpts.is_fixed,
+        tour_id:                 tourId,
+        venue_id:                venue.id,
+        sequence_order:          9999,
+        rest_days:               stopOpts.rest_days               ? parseInt(stopOpts.rest_days)                : null,
+        show_start_hour:         stopOpts.show_start_hour         ? parseFloat(stopOpts.show_start_hour)        : null,
+        show_duration_hours:     stopOpts.show_duration_hours     ? parseFloat(stopOpts.show_duration_hours)    : null,
+        production_setup_hours:  stopOpts.production_setup_hours  ? parseFloat(stopOpts.production_setup_hours) : null,
+        breakdown_hours:         stopOpts.breakdown_hours         ? parseFloat(stopOpts.breakdown_hours)        : null,
+        is_fixed:                stopOpts.is_fixed,
       })
       onAdded()
     } catch (e) {
@@ -303,15 +316,34 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Rest days (override)</label>
-                <input type="number" min="0" value={stopOpts.rest_days}
-                  onChange={e => setSO('rest_days', e.target.value)}
+                <label className="block text-xs text-gray-500 mb-1">Show Start Time</label>
+                <input type="time" step="1800"
+                  value={stopOpts.show_start_hour ? hourToTimeStr(stopOpts.show_start_hour) : ''}
+                  onChange={e => setSO('show_start_hour', e.target.value ? timeStrToHour(e.target.value) : '')}
                   placeholder="Tour default" className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Buffer days (override)</label>
-                <input type="number" min="0" value={stopOpts.buffer_days}
-                  onChange={e => setSO('buffer_days', e.target.value)}
+                <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
+                <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
+                  onChange={e => setSO('show_duration_hours', e.target.value)}
+                  placeholder="Tour default" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+                <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
+                  onChange={e => setSO('production_setup_hours', e.target.value)}
+                  placeholder="Tour default" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+                <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
+                  onChange={e => setSO('breakdown_hours', e.target.value)}
+                  placeholder="Tour default" className={inputCls} />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
+                <input type="number" min="0" value={stopOpts.rest_days}
+                  onChange={e => setSO('rest_days', e.target.value)}
                   placeholder="Tour default" className={inputCls} />
               </div>
             </div>
@@ -360,15 +392,34 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Stop Options</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Rest days (override)</label>
-                  <input type="number" min="0" value={stopOpts.rest_days}
-                    onChange={e => setSO('rest_days', e.target.value)}
+                  <label className="block text-xs text-gray-500 mb-1">Show Start Time</label>
+                  <input type="time" step="1800"
+                    value={stopOpts.show_start_hour ? hourToTimeStr(stopOpts.show_start_hour) : ''}
+                    onChange={e => setSO('show_start_hour', e.target.value ? timeStrToHour(e.target.value) : '')}
+                    className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
+                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
+                    onChange={e => setSO('show_duration_hours', e.target.value)}
                     placeholder="Tour default" className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Buffer days (override)</label>
-                  <input type="number" min="0" value={stopOpts.buffer_days}
-                    onChange={e => setSO('buffer_days', e.target.value)}
+                  <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+                  <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
+                    onChange={e => setSO('production_setup_hours', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
+                    onChange={e => setSO('breakdown_hours', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
+                  <input type="number" min="0" value={stopOpts.rest_days}
+                    onChange={e => setSO('rest_days', e.target.value)}
                     placeholder="Tour default" className={inputCls} />
                 </div>
               </div>
@@ -469,8 +520,13 @@ export default function TourDetail() {
       const dated = computeTourDates(
         orderedFullStops,
         tour.start_date ?? new Date().toISOString().split('T')[0],
-        tour.default_rest_days  ?? 0,
-        tour.default_buffer_days ?? 0,
+        {
+          defaultRestDays:             tour.default_rest_days              ?? 0,
+          defaultShowStartHour:        tour.default_show_start_hour        ?? 20,
+          defaultShowDurationHours:    tour.default_show_duration_hours    ?? 2,
+          defaultProductionSetupHours: tour.default_production_setup_hours ?? 4,
+          defaultBreakdownHours:       tour.default_breakdown_hours        ?? 2,
+        },
         newLegs
       )
 
