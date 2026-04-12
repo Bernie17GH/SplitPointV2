@@ -1,22 +1,20 @@
-// Single HERE API key used for all REST endpoints (geocoding, routing, discover)
-const KEY = import.meta.env.VITE_HERE_MAPS_KEY
+// VITE_HERE_MAPS_KEY  — HERE Maps JS SDK (map tile rendering)
+// VITE_HERE_API_KEY   — HERE REST APIs (geocoding, routing)
+const MAPS_KEY = import.meta.env.VITE_HERE_MAPS_KEY // eslint-disable-line no-unused-vars
+const REST_KEY  = import.meta.env.VITE_HERE_API_KEY
 
 /**
- * Comprehensive HERE enrichment for a venue row.
- * Calls the Geocoding endpoint for location fields and
- * the Discover endpoint for contact / info fields.
+ * HERE Geocoding only — location fields (geocode, address, neighborhood, city, state, zip).
+ * HERE Discover (phone/website/venue_type) requires a paid Places tier not available on
+ * this account; contact/info fields are handled by OSM Nominatim in Settings cleanup.
  *
  * venue  : { name, address, city, state, zip, lat?, lng? }
  * fields : array of field keys — any of:
  *   'geocode' | 'address' | 'neighborhood' | 'city' | 'state' | 'zip'
- *   'phone'   | 'website' | 'venue_type'   | 'capacity'
  *
  * Returns a flat object with whatever HERE found; missing fields are null.
- * Always includes _matchedTitle (from Discover) and _source: 'HERE'.
+ * Always includes _source: 'HERE'.
  */
-// HERE Geocoding only — location fields (geocode, address, neighborhood, city, state, zip).
-// HERE Discover (phone/website/venue_type) requires a paid Places tier not available on
-// this account; contact/info fields are handled by OSM Nominatim in Settings cleanup.
 export async function enrichFromHERE(venue, fields) {
   const result = { _source: 'HERE' }
 
@@ -27,7 +25,7 @@ export async function enrichFromHERE(venue, fields) {
     if (parts.length >= 2) {
       const url =
         `https://geocode.search.hereapi.com/v1/geocode` +
-        `?q=${encodeURIComponent(parts.join(', '))}&limit=1&apiKey=${KEY}`
+        `?q=${encodeURIComponent(parts.join(', '))}&limit=1&apiKey=${REST_KEY}`
       const res = await fetch(url)
       if (!res.ok) throw new Error(`HERE Geocode ${res.status} — key may need Geocoding service enabled`)
       const { items } = await res.json()
@@ -58,7 +56,7 @@ export async function enrichFromHERE(venue, fields) {
 export async function geocodeAddress(address) {
   const url =
     `https://geocode.search.hereapi.com/v1/geocode` +
-    `?q=${encodeURIComponent(address)}&limit=1&apiKey=${KEY}`
+    `?q=${encodeURIComponent(address)}&limit=1&apiKey=${REST_KEY}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`)
   const data = await res.json()
@@ -98,7 +96,7 @@ export async function optimizeRoute(stops) {
   midpoints.forEach(s => { url += `&via=${s.lat},${s.lng}` })
   if (midpoints.length > 0) url += `&optimizeWaypointOrder=true`
   url += `&return=summary,polyline`
-  url += `&apiKey=${KEY}`
+  url += `&apiKey=${REST_KEY}`
 
   const res = await fetch(url)
   if (!res.ok) {
