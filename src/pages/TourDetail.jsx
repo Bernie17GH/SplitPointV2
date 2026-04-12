@@ -511,10 +511,12 @@ export default function TourDetail() {
       }))
 
       const { orderedStops, legs: newLegs } = await optimizeRoute(waypoints)
+      console.log('[Optimize] TSP result:', orderedStops.map(s => s.name))
       setLegs(newLegs)
 
       // Map optimized waypoints back to full stop objects so rest_days/buffer_days are preserved
       const orderedFullStops = orderedStops.map(ws => stops.find(s => s.id === ws.id))
+      console.log('[Optimize] orderedFullStops:', orderedFullStops.map(s => s.venues?.name))
 
       // Apply tour date math — guard against null tour defaults
       const dated = computeTourDates(
@@ -541,12 +543,15 @@ export default function TourDetail() {
         travel_hours_from_prev: i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
       }))
 
+      console.log('[Optimize] stopUpdates:', stopUpdates.map(u => ({ id: u.id, seq: u.sequence_order, venue_id: u.venue_id })))
+
       const [stopsResult, tourResult] = await Promise.all([
         supabase.from('tour_stops').upsert(stopUpdates),
         supabase.from('tours').update({
           route_calculations_count: (tour.route_calculations_count ?? 0) + 1,
         }).eq('id', id),
       ])
+      console.log('[Optimize] upsert result:', stopsResult)
       if (stopsResult.error) throw new Error(`Stop save failed: ${stopsResult.error.message}`)
       if (tourResult.error)  throw new Error(`Tour save failed: ${tourResult.error.message}`)
 

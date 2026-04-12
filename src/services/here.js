@@ -68,10 +68,47 @@ export async function geocodeAddress(address) {
 }
 
 /**
- * Optimize the order of tour stops using HERE Routing API v8.
+ * Haversine distance in miles between two {lat, lng} points.
+ */
+function haversineDistance(a, b) {
+  const R    = 3958.8 // Earth radius in miles
+  const dLat = (b.lat - a.lat) * Math.PI / 180
+  const dLng = (b.lng - a.lng) * Math.PI / 180
+  const sinLat = Math.sin(dLat / 2)
+  const sinLng = Math.sin(dLng / 2)
+  const h = sinLat * sinLat +
+            Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * sinLng * sinLng
+  return 2 * R * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Nearest-neighbor TSP heuristic.
+ * Visits every stop in `pool` starting from `from`, always picking the closest unvisited stop.
+ */
+function nearestNeighborTSP(pool, from) {
+  const remaining = [...pool]
+  const ordered   = []
+  let current     = from
+  while (remaining.length > 0) {
+    let bestIdx  = 0
+    let bestDist = Infinity
+    remaining.forEach((s, i) => {
+      const d = haversineDistance(current, s)
+      if (d < bestDist) { bestDist = d; bestIdx = i }
+    })
+    const next = remaining.splice(bestIdx, 1)[0]
+    ordered.push(next)
+    current = next
+  }
+  return ordered
+}
+
+/**
+ * Optimize the order of tour stops using nearest-neighbor TSP + HERE Routing API v8.
  *
  * First stop = fixed origin, last stop = fixed destination.
- * All middle stops are via-waypoints HERE will reorder.
+ * All middle stops are reordered client-side via TSP heuristic, then sent to HERE
+ * in that order so the leg data matches the displayed sequence.
  *
  * stops: [{ id, lat, lng, name, city, state }]
  *
@@ -82,17 +119,23 @@ export async function geocodeAddress(address) {
 export async function optimizeRoute(stops) {
   if (stops.length < 2) return { orderedStops: stops, legs: [] }
 
-  const allStops = stops
   const [first, ...rest] = stops
-  const last      = rest.length > 0 ? rest.pop() : null
-  const midpoints = rest
+
+  // TSP over ALL non-first stops — endpoint is determined by the heuristic,
+  // not pre-fixed to whatever stop was added last.
+  const tspOrdered = rest.length > 1
+    ? nearestNeighborTSP(rest, first)
+    : rest
+
+  const orderedStops = [first, ...tspOrdered]
+  const destination  = tspOrdered[tspOrdered.length - 1]
+  const viaStops     = tspOrdered.slice(0, -1)  // everything between origin and destination
 
   let url = `https://router.hereapi.com/v8/routes`
   url += `?transportMode=car`
   url += `&origin=${first.lat},${first.lng}`
-  url += `&destination=${last ? `${last.lat},${last.lng}` : `${first.lat},${first.lng}`}`
-  midpoints.forEach(s => { url += `&via=${s.lat},${s.lng}` })
-  if (midpoints.length > 0) url += `&optimizeWaypointOrder=true`
+  url += `&destination=${destination.lat},${destination.lng}`
+  viaStops.forEach(s => { url += `&via=${s.lat},${s.lng}` })
   url += `&return=summary,polyline`
   url += `&apiKey=${REST_KEY}`
 
@@ -105,57 +148,11 @@ export async function optimizeRoute(stops) {
   const route = data.routes?.[0]
   if (!route) throw new Error('HERE returned no route')
 
-  const sections = route.sections
-
-  // Exact lookup on originalLocation (HERE echoes back our exact input coordinates).
-  // Truncate to 6 dp (~0.1 m) to absorb any float serialisation noise.
-  const fmt = n => Number(n).toFixed(6)
-  const exactIndex = new Map()
-  allStops.forEach(s => {
-    if (s.lat == null || s.lng == null) return
-    exactIndex.set(`${fmt(s.lat)},${fmt(s.lng)}`, s)
-  })
-
-  function findStop(lat, lng) {
-    return exactIndex.get(`${fmt(lat)},${fmt(lng)}`)
-  }
-
-  // Origin (first) and destination (last) are fixed — HERE does not echo back
-  // originalLocation for those, only for via waypoints. Assign them directly
-  // by position and use exact coordinate matching only for the midpoints.
-  const seen    = new Set()
-  const ordered = []
-
-  for (let i = 0; i < sections.length; i++) {
-    let match
-    if (i === 0) {
-      // First section departure is always the origin
-      match = first
-    } else {
-      const dep    = sections[i].departure.place
-      const depLat = dep.originalLocation?.lat ?? dep.location?.lat
-      const depLng = dep.originalLocation?.lng ?? dep.location?.lng
-      match = findStop(depLat, depLng)
-    }
-    if (match && !seen.has(match.id)) { seen.add(match.id); ordered.push(match) }
-
-    if (i === sections.length - 1) {
-      // Last section arrival is always the destination
-      const arrMatch = last ?? first
-      if (arrMatch && !seen.has(arrMatch.id)) { seen.add(arrMatch.id); ordered.push(arrMatch) }
-    }
-  }
-
-  if (ordered.length < stops.length) {
-    console.warn('HERE optimize: via-waypoint match incomplete, using original order')
-    return { orderedStops: stops, legs: [] }
-  }
-
-  const legs = sections.map(s => ({
+  const legs = route.sections.map(s => ({
     durationHours:   +(s.summary.duration / 3600).toFixed(1),
     distanceMiles:   +(s.summary.length   / 1609.34).toFixed(1),
     encodedPolyline: s.polyline,
   }))
 
-  return { orderedStops: ordered, legs }
+  return { orderedStops, legs }
 }
