@@ -1,5 +1,5 @@
-// Single key for all HERE calls (REST geocoding, routing, and Maps JS SDK)
-const REST_KEY = import.meta.env.VITE_HERE_API_KEY
+// VITE_HERE_MAPS_KEY handles all HERE calls — map rendering, geocoding, and routing
+const REST_KEY = import.meta.env.VITE_HERE_MAPS_KEY
 
 /**
  * HERE Geocoding only — location fields (geocode, address, neighborhood, city, state, zip).
