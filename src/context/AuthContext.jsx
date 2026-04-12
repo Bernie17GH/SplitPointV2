@@ -11,6 +11,10 @@ async function fetchProfile(authUser) {
       .eq('id', authUser.id)
       .maybeSingle()
     if (error) console.warn('fetchProfile error:', error.message)
+    if (data?.status === 'inactive') {
+      await supabase.auth.signOut()
+      throw new Error('Account deactivated')
+    }
     return {
       id: authUser.id,
       email: authUser.email,
