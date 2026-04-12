@@ -426,9 +426,8 @@ const MISSING_FILTERS = [
 ]
 
 const SOURCE_OPTS = [
-  { key: 'here', label: 'HERE'       },
-  { key: 'web',  label: 'Web (OSM)'  },
-  { key: 'auto', label: 'HERE → Web' },
+  { key: 'here+web', label: 'HERE + Web' },
+  { key: 'web',      label: 'Web only'   },
 ]
 
 // Direct mapping: field key → DB column(s)
@@ -518,7 +517,7 @@ function VenueCleanupSection() {
   const [missingFilter, setMissingFilter] = useState(null)
   const [checkedIds, setCheckedIds]       = useState(new Set())
   const [enrichFields, setEnrichFields]   = useState(new Set(['phone', 'website']))
-  const [source, setSource]               = useState('auto') // 'here' | 'web' | 'auto'
+  const [source, setSource]               = useState('here+web') // 'here+web' | 'web'
   const [phase, setPhase]                 = useState('select') // 'select' | 'working' | 'review'
   const [progress, setProgress]           = useState({ done: 0, total: 0 })
   const [results, setResults]             = useState([])
@@ -564,35 +563,49 @@ function VenueCleanupSection() {
     setEnrichFields(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
   }
 
-  // Orchestrate lookup across HERE and/or OSM based on selected source
+  // HERE handles location fields only; OSM handles contact/info fields always.
+  // 'here+web': HERE for geocode/address/city/state/zip, OSM for phone/website/venue_type/capacity
+  // 'web':      OSM for everything
+  const HERE_LOC_FIELDS = ['geocode', 'address', 'neighborhood', 'city', 'state', 'zip']
+
   async function lookupVenue(venue, fieldList) {
     let result = {}
 
-    if (source === 'here' || source === 'auto') {
-      result = await enrichFromHERE(venue, fieldList)
-    }
+    if (source === 'here+web') {
+      // HERE for location fields
+      const hereFields = fieldList.filter(f => HERE_LOC_FIELDS.includes(f))
+      if (hereFields.length > 0) {
+        try {
+          const hereResult = await enrichFromHERE(venue, hereFields)
+          Object.assign(result, hereResult)
+        } catch (_) {}  // HERE failure is non-fatal; OSM can fill location as fallback
+      }
 
-    if (source === 'web' || source === 'auto') {
-      // For 'auto': only ask OSM for fields HERE didn't fill in
-      const missing = source === 'auto'
-        ? fieldList.filter(f => f === 'geocode' ? result.lat == null : !result[f])
-        : fieldList
-
-      if (missing.length > 0) {
-        const osmResult = await enrichFromOSM(venue, missing).catch(() => ({}))
-        for (const f of missing) {
+      // OSM for contact/info fields, plus any location fields HERE didn't fill
+      const osmFields = fieldList.filter(f =>
+        !HERE_LOC_FIELDS.includes(f) ||
+        (f === 'geocode' ? result.lat == null : !result[f])
+      )
+      if (osmFields.length > 0) {
+        const osmResult = await enrichFromOSM(venue, osmFields).catch(() => ({}))
+        for (const f of osmFields) {
           if (f === 'geocode') {
             if (result.lat == null && osmResult.lat != null) {
               result.lat = osmResult.lat; result.lng = osmResult.lng
-              result._source = osmResult._source
             }
           } else if (!result[f] && osmResult[f]) {
             result[f] = osmResult[f]
-            if (!result._source) result._source = osmResult._source
           }
         }
         if (!result._matchedTitle && osmResult._matchedTitle) result._matchedTitle = osmResult._matchedTitle
+        const hadHere = result._source === 'HERE'
+        const hadOsm  = !!osmResult._source
+        if (hadHere && hadOsm) result._source = 'HERE + OSM'
+        else if (!hadHere && hadOsm) result._source = osmResult._source
       }
+    } else {
+      // 'web' — OSM only for all fields
+      result = await enrichFromOSM(venue, fieldList)
     }
 
     return result
@@ -663,11 +676,10 @@ function VenueCleanupSection() {
   // ── Working phase ──────────────────────────────────────────────────────────
   if (phase === 'working') {
     const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0
-    const sourceLabel = SOURCE_OPTS.find(s => s.key === source)?.label ?? source
     return (
       <div className="pt-4 space-y-3">
         <p className="text-sm font-medium text-gray-700">
-          Looking up via {sourceLabel}…
+          Looking up venues…
         </p>
         <div className="w-full bg-gray-100 rounded-full h-2.5">
           <div className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${pct}%` }} />
@@ -835,11 +847,9 @@ function VenueCleanupSection() {
           ))}
         </div>
         <p className="text-xs text-gray-400">
-          {source === 'here'
-            ? 'HERE Maps only — fast, authoritative for geocoding.'
-            : source === 'web'
-            ? 'OpenStreetMap only — community-sourced venue data.'
-            : 'Tries HERE first; falls back to OpenStreetMap for any missing fields.'}
+          {source === 'here+web'
+            ? 'HERE for location fields (address, geocode, city, state, zip) · OpenStreetMap for contact fields (phone, website, venue type).'
+            : 'OpenStreetMap only — community-sourced data for all fields.'}
         </p>
       </div>
 

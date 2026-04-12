@@ -14,13 +14,14 @@ const KEY = import.meta.env.VITE_HERE_MAPS_KEY
  * Returns a flat object with whatever HERE found; missing fields are null.
  * Always includes _matchedTitle (from Discover) and _source: 'HERE'.
  */
+// HERE Geocoding only — location fields (geocode, address, neighborhood, city, state, zip).
+// HERE Discover (phone/website/venue_type) requires a paid Places tier not available on
+// this account; contact/info fields are handled by OSM Nominatim in Settings cleanup.
 export async function enrichFromHERE(venue, fields) {
   const result = { _source: 'HERE' }
 
   const LOC_FIELDS = ['geocode', 'address', 'neighborhood', 'city', 'state', 'zip']
-  const POI_FIELDS = ['phone', 'website', 'venue_type', 'capacity']
 
-  // ── Geocoding endpoint (location fields) ───────────────────────────────────
   if (fields.some(f => LOC_FIELDS.includes(f))) {
     const parts = [venue.address, venue.city, venue.state, venue.zip].filter(Boolean)
     if (parts.length >= 2) {
@@ -44,31 +45,6 @@ export async function enrichFromHERE(venue, fields) {
         if (fields.includes('zip'))          result.zip          = a.postalCode ?? null
         if (fields.includes('neighborhood')) result.neighborhood = a.district   ?? null
       }
-    }
-  }
-
-  // ── Discover endpoint (contact / category fields) ──────────────────────────
-  if (fields.some(f => POI_FIELDS.includes(f))) {
-    const q = [venue.name, venue.city, venue.state].filter(Boolean).join(' ')
-    let url = `https://discover.search.hereapi.com/v1/discover` +
-              `?q=${encodeURIComponent(q)}&limit=1&apiKey=${KEY}`
-    if (venue.lat && venue.lng) url += `&at=${venue.lat},${venue.lng}`
-    else                        url += `&in=countryCode:USA`
-
-    const res = await fetch(url)
-    if (!res.ok) throw new Error(`HERE Discover ${res.status} — key may need Places/Discover service enabled`)
-    const { items } = await res.json()
-    const it = items?.[0]
-    if (it) {
-      result._matchedTitle = it.title
-      if (fields.includes('phone'))
-        result.phone      = it.contacts?.[0]?.phone?.[0]?.value ?? null
-      if (fields.includes('website'))
-        result.website    = it.contacts?.[0]?.www?.[0]?.value   ?? null
-      if (fields.includes('venue_type'))
-        result.venue_type = it.categories?.[0]?.name            ?? null
-      if (fields.includes('capacity'))
-        result.capacity   = null   // HERE Discover does not carry capacity
     }
   }
 
