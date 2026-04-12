@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
 import { enrichFromHERE } from '../services/here'
 import { enrichFromOSM }  from '../services/osm'
+import { enrichFromDDG }  from '../services/ddg'
 
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
@@ -606,6 +607,19 @@ function VenueCleanupSection() {
     } else {
       // 'web' — OSM only for all fields
       result = await enrichFromOSM(venue, fieldList)
+    }
+
+    // DDG pass — fill any contact/capacity fields still missing after HERE + OSM
+    const DDG_FIELDS = ['website', 'phone', 'capacity']
+    const missingDDG = fieldList.filter(f => DDG_FIELDS.includes(f) && !result[f])
+    if (missingDDG.length > 0) {
+      const ddgResult = await enrichFromDDG(venue, missingDDG)
+      for (const f of missingDDG) {
+        if (ddgResult[f] != null) result[f] = ddgResult[f]
+      }
+      if (ddgResult._source && Object.keys(ddgResult).some(k => k !== '_source' && ddgResult[k] != null)) {
+        result._source = result._source ? `${result._source} + DDG` : 'DDG'
+      }
     }
 
     return result
