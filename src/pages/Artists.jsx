@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../context/AuthContext'
 import BottomSheet from '../components/ui/BottomSheet'
 import { supabase } from '../services/supabase'
@@ -14,7 +14,7 @@ function SpotifyIcon() {
 async function fetchAllArtists() {
   const { data: artists, error } = await supabase
     .from('artists')
-    .select('*')
+    .select('id, name, genre, agent_id, min_booking_fee, favorite_cities, spotify_url, avatar_initials')
     .order('name')
   if (error) throw error
 
@@ -349,9 +349,17 @@ export default function Artists() {
     await load()
   }
 
-  const myArtists      = artists.filter((a) => a.agent_id === user?.id)
-  const available      = artists.filter((a) => !a.agent_id)
-  const claimedByOther = artists.filter((a) => a.agent_id && a.agent_id !== user?.id)
+  const { myArtists, available, claimedByOther } = useMemo(() => {
+    const myArtists      = []
+    const available      = []
+    const claimedByOther = []
+    for (const a of artists) {
+      if (!a.agent_id)                       available.push(a)
+      else if (a.agent_id === user?.id)      myArtists.push(a)
+      else                                   claimedByOther.push(a)
+    }
+    return { myArtists, available, claimedByOther }
+  }, [artists, user?.id])
 
   const cardProps = { user, isAdmin, onEdit: setEditing, onClaim: handleClaim, onRelease: handleRelease }
 
@@ -375,10 +383,10 @@ export default function Artists() {
       ) : isAdmin ? (
         // Admin: see all artists grouped by status
         <>
-          <Section title={`Represented (${artists.filter(a => a.agent_id).length})`} empty="None yet">
-            {artists.filter(a => a.agent_id).length > 0 && (
+          <Section title={`Represented (${claimedByOther.length + myArtists.length})`} empty="None yet">
+            {(claimedByOther.length + myArtists.length) > 0 && (
               <div className="space-y-4">
-                {artists.filter(a => a.agent_id).map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
+                {[...myArtists, ...claimedByOther].map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             )}
           </Section>

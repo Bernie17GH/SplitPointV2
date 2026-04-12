@@ -194,8 +194,8 @@ export default function Venues() {
   }, [])
 
   async function handleSave(updated) {
-    const next = await upsertRow('venues', updated)
-    setVenues(next)
+    await upsertRow('venues', updated)
+    setVenues(prev => prev.map(v => v.id === updated.id ? updated : v))
     setEditing(null)
   }
 

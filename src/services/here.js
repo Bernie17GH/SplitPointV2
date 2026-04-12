@@ -59,13 +59,25 @@ export async function optimizeRoute(stops) {
 
   const sections = route.sections
 
-  // Match a HERE-returned coordinate back to an original stop
+  // Build an O(1) coordinate index: grid key → stop
+  // Grid resolution: 0.002° per cell (~220m), ±1 cell tolerance in lookup
+  const GRID = 500 // 1/0.002
+  const stopIndex = new Map()
+  allStops.forEach(s => {
+    if (s.lat == null || s.lng == null) return
+    stopIndex.set(`${Math.round(s.lat * GRID)},${Math.round(s.lng * GRID)}`, s)
+  })
+
   function findStop(lat, lng) {
-    return allStops.find(s =>
-      s.lat != null && s.lng != null &&
-      Math.abs(s.lat - lat) < 0.002 &&
-      Math.abs(s.lng - lng) < 0.002
-    )
+    const r = Math.round(lat * GRID)
+    const c = Math.round(lng * GRID)
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const s = stopIndex.get(`${r + dr},${c + dc}`)
+        if (s) return s
+      }
+    }
+    return undefined
   }
 
   const seen    = new Set()

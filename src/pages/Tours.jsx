@@ -108,21 +108,16 @@ function LineupRow({ row, index, artists, onChange, onRemove }) {
   )
 }
 
-function NewTourSheet({ open, onClose, onCreated }) {
+function NewTourSheet({ open, onClose, onCreated, artists }) {
   const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [form, setForm] = useState(EMPTY_FORM)
-  const [artists, setArtists] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) { setStep(1); setForm(EMPTY_FORM); setError('') }
   }, [open])
-
-  useEffect(() => {
-    supabase.from('artists').select('id, name').order('name').then(({ data }) => setArtists(data ?? []))
-  }, [])
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }))
@@ -321,23 +316,28 @@ function NewTourSheet({ open, onClose, onCreated }) {
 export default function Tours() {
   const navigate = useNavigate()
   const [tours, setTours] = useState([])
+  const [artists, setArtists] = useState([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
 
   async function load() {
-    const { data } = await supabase
-      .from('tours')
-      .select(`
-        id, name, status, start_date, end_date,
-        default_rest_days, default_buffer_days,
-        route_calculations_count,
-        tour_artists ( role, appearance_order, artists ( id, name ) ),
-        tour_stops ( id )
-      `)
-      .order('created_at', { ascending: false })
+    const [toursRes, artistsRes] = await Promise.all([
+      supabase
+        .from('tours')
+        .select(`
+          id, name, status, start_date, end_date,
+          default_rest_days, default_buffer_days,
+          route_calculations_count,
+          tour_artists ( role, appearance_order, artists ( id, name ) ),
+          tour_stops ( id )
+        `)
+        .order('created_at', { ascending: false }),
+      supabase.from('artists').select('id, name').order('name'),
+    ])
     setTours(
-      (data ?? []).map(t => ({ ...t, stop_count: t.tour_stops?.length ?? 0 }))
+      (toursRes.data ?? []).map(t => ({ ...t, stop_count: t.tour_stops?.length ?? 0 }))
     )
+    setArtists(artistsRes.data ?? [])
     setLoading(false)
   }
 
@@ -381,7 +381,7 @@ export default function Tours() {
         </div>
       )}
 
-      <NewTourSheet open={creating} onClose={() => setCreating(false)} onCreated={handleCreated} />
+      <NewTourSheet open={creating} onClose={() => setCreating(false)} onCreated={handleCreated} artists={artists} />
     </div>
   )
 }

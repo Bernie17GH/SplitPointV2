@@ -12,12 +12,14 @@ export function addDays(dateStr, n) {
   ].join('-')
 }
 
+const DATE_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+
 /**
  * Format a date range as "Oct 14 – Nov 2, 2026".
  * Handles cross-year ranges correctly.
  */
 export function formatDateRange(startDate, endDate) {
-  const fmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+  const fmt = DATE_FMT
   const s = new Date(startDate + 'T00:00:00')
   const e = new Date(endDate   + 'T00:00:00')
   const sYear = s.getFullYear()

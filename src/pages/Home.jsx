@@ -29,25 +29,22 @@ export default function Home() {
 
   useEffect(() => {
     async function load() {
+      const artistQuery = isAdmin
+        ? supabase.from('artists').select('*', { count: 'exact', head: true })
+        : supabase.from('artists').select('*', { count: 'exact', head: true }).eq('agent_id', user?.id)
+
       const [artistsRes, venuesRes] = await Promise.all([
-        supabase
-          .from('artists')
-          .select('id, agent_id', { count: 'exact' }),
-        supabase
-          .from('venues')
-          .select('id', { count: 'exact' }),
+        artistQuery,
+        supabase.from('venues').select('*', { count: 'exact', head: true }),
       ])
 
-      const allArtists = artistsRes.data ?? []
-      const myArtists  = allArtists.filter((a) => a.agent_id === user?.id)
-
       setStats({
-        myArtists:  isAdmin ? allArtists.length : myArtists.length,
-        venueCount: venuesRes.count ?? 0,
+        myArtists:  artistsRes.count ?? 0,
+        venueCount: venuesRes.count  ?? 0,
       })
     }
     load()
-  }, [user])
+  }, [user, isAdmin])
 
   return (
     <div className="px-4 py-8">

@@ -7,7 +7,7 @@ async function fetchProfile(authUser) {
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*')
+      .select('id, name, email, agency, phone, role, status')
       .eq('id', authUser.id)
       .maybeSingle()
     if (error) console.warn('fetchProfile error:', error.message)

@@ -16,19 +16,23 @@ export async function readTable(table) {
 }
 
 export async function upsertRow(table, row) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(table)
     .upsert(row)
+    .select()
+    .single()
   if (error) throw error
-  return readTable(table)
+  return data
 }
 
 export async function insertRow(table, row) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from(table)
     .insert(row)
+    .select()
+    .single()
   if (error) throw error
-  return readTable(table)
+  return data
 }
 
 // ─── Profiles (one row per user id) ───────────────────────────────────────────
@@ -36,7 +40,7 @@ export async function insertRow(table, row) {
 export async function readProfile(userId) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, name, email, agency, phone, role, status')
     .eq('id', userId)
     .maybeSingle()
   if (error) throw error

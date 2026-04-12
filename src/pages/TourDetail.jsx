@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { geocodeAddress, optimizeRoute } from '../services/here'
@@ -324,17 +324,20 @@ export default function TourDetail() {
 
   const headliner = tour?.tour_artists?.find(a => a.role === 'Headliner')
 
-  const mapStops = stops
-    .filter(s => s.venues?.lat && s.venues?.lng)
-    .map(s => ({
-      id: s.id,
-      lat: s.venues.lat,
-      lng: s.venues.lng,
-      name: s.venues.name,
-      city: s.venues.city,
-      state: s.venues.state,
-      is_fixed: s.is_fixed,
-    }))
+  const mapStops = useMemo(() =>
+    stops
+      .filter(s => s.venues?.lat && s.venues?.lng)
+      .map(s => ({
+        id: s.id,
+        lat: s.venues.lat,
+        lng: s.venues.lng,
+        name: s.venues.name,
+        city: s.venues.city,
+        state: s.venues.state,
+        is_fixed: s.is_fixed,
+      })),
+    [stops]
+  )
 
   async function handleOptimize() {
     if (stops.length < 2) { setOptError('Add at least 2 stops to optimize.'); return }
@@ -367,22 +370,21 @@ export default function TourDetail() {
         tour.default_buffer_days
       )
 
-      // Persist new order + dates + travel times to Supabase
-      for (let i = 0; i < orderedStops.length; i++) {
-        const origStop = stops.find(s => s.id === orderedStops[i].id)
-        if (!origStop) continue
-        await supabase.from('tour_stops').update({
-          sequence_order:         i,
-          arrival_date:           dated[i].arrival_date,
-          departure_date:         dated[i].departure_date,
-          travel_hours_from_prev: i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
-        }).eq('id', origStop.id)
-      }
+      // Batch all stop updates + tour counter in two parallel calls
+      const stopUpdates = orderedStops.map((ws, i) => ({
+        id:                     ws.id,
+        sequence_order:         i,
+        arrival_date:           dated[i].arrival_date,
+        departure_date:         dated[i].departure_date,
+        travel_hours_from_prev: i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
+      }))
 
-      // Increment route calculation count
-      await supabase.from('tours').update({
-        route_calculations_count: (tour.route_calculations_count ?? 0) + 1,
-      }).eq('id', id)
+      await Promise.all([
+        supabase.from('tour_stops').upsert(stopUpdates),
+        supabase.from('tours').update({
+          route_calculations_count: (tour.route_calculations_count ?? 0) + 1,
+        }).eq('id', id),
+      ])
 
       await loadTour()
     } catch (e) {

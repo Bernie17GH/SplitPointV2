@@ -2,8 +2,10 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-const TIMEOUT_MS = 10 * 60 * 1000 // 10 minutes
-const STORAGE_KEY = 'sp_last_active'
+const TIMEOUT_MS   = 10 * 60 * 1000 // 10 minutes
+const STORAGE_KEY  = 'sp_last_active'
+const THROTTLE_MS  = 500             // min ms between timer resets
+const ACTIVITY_EVENTS = ['touchstart', 'mousedown', 'keydown', 'scroll']
 
 /**
  * Signs the user out and redirects to /login after TIMEOUT_MS of inactivity.
@@ -13,7 +15,8 @@ const STORAGE_KEY = 'sp_last_active'
 export function useInactivityTimeout() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
-  const timerRef = useRef(null)
+  const timerRef       = useRef(null)
+  const lastResetRef   = useRef(0)
 
   const logout = useCallback(async () => {
     localStorage.removeItem(STORAGE_KEY)
@@ -23,7 +26,10 @@ export function useInactivityTimeout() {
   }, [signOut, navigate])
 
   const resetTimer = useCallback(() => {
-    localStorage.setItem(STORAGE_KEY, Date.now().toString())
+    const now = Date.now()
+    if (now - lastResetRef.current < THROTTLE_MS) return // throttle scroll/rapid events
+    lastResetRef.current = now
+    localStorage.setItem(STORAGE_KEY, now.toString())
     clearTimeout(timerRef.current)
     timerRef.current = setTimeout(logout, TIMEOUT_MS)
   }, [logout])
@@ -42,8 +48,7 @@ export function useInactivityTimeout() {
     checkElapsed()
     resetTimer()
 
-    const events = ['touchstart', 'mousedown', 'keydown', 'scroll']
-    events.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }))
+    ACTIVITY_EVENTS.forEach((e) => window.addEventListener(e, resetTimer, { passive: true }))
 
     // When the user returns to the app (iOS background restore, tab switch back)
     const onVisible = () => {
@@ -53,7 +58,7 @@ export function useInactivityTimeout() {
 
     return () => {
       clearTimeout(timerRef.current)
-      events.forEach((e) => window.removeEventListener(e, resetTimer))
+      ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, resetTimer))
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [user, resetTimer, checkElapsed])

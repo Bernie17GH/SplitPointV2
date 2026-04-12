@@ -2,6 +2,15 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
+const FIELDS = [
+  { id: 'name',            label: 'Full name',        type: 'text',     placeholder: 'Jane Smith' },
+  { id: 'email',           label: 'Email',            type: 'email',    placeholder: 'you@example.com' },
+  { id: 'agency',          label: 'Agency name',      type: 'text',     placeholder: 'Smith Talent Group' },
+  { id: 'phone',           label: 'Phone',            type: 'tel',      placeholder: '+1 (555) 000-0000' },
+  { id: 'password',        label: 'Password',         type: 'password', placeholder: '••••••••' },
+  { id: 'confirmPassword', label: 'Confirm password', type: 'password', placeholder: '••••••••' },
+]
+
 export default function Register() {
   const { signUp } = useAuth()
   const navigate = useNavigate()
@@ -49,15 +58,6 @@ export default function Register() {
     }
   }
 
-  const fields = [
-    { id: 'name',            label: 'Full name',       type: 'text',     placeholder: 'Jane Smith' },
-    { id: 'email',           label: 'Email',           type: 'email',    placeholder: 'you@example.com' },
-    { id: 'agency',          label: 'Agency name',     type: 'text',     placeholder: 'Smith Talent Group' },
-    { id: 'phone',           label: 'Phone',           type: 'tel',      placeholder: '+1 (555) 000-0000' },
-    { id: 'password',        label: 'Password',        type: 'password', placeholder: '••••••••' },
-    { id: 'confirmPassword', label: 'Confirm password', type: 'password', placeholder: '••••••••' },
-  ]
-
   return (
     <div className="min-h-svh bg-gray-50 flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
@@ -67,7 +67,7 @@ export default function Register() {
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-          {fields.map(({ id, label, type, placeholder }) => (
+          {FIELDS.map(({ id, label, type, placeholder }) => (
             <div key={id}>
               <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={id}>
                 {label}
