@@ -100,7 +100,7 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
     if (query.length < 2) { setResults([]); return }
     const t = setTimeout(() => {
       supabase.from('venues')
-        .select('id, name, city, state, address, lat, lng')
+        .select('id, name, city, state, address, lat, lng, capacity')
         .ilike('city', `%${query}%`)
         .order('city')
         .order('name')
@@ -253,7 +253,10 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                         </span>
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{v.name}</p>
-                          <p className="text-xs text-gray-400">{[v.city, v.state].filter(Boolean).join(', ')}</p>
+                          <p className="text-xs text-gray-400">
+                            {[v.city, v.state].filter(Boolean).join(', ')}
+                            {v.capacity ? ` · ${v.capacity.toLocaleString()} cap` : ''}
+                          </p>
                         </div>
                       </button>
                     )
