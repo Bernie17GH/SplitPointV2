@@ -42,8 +42,8 @@ export function formatDateRange(startDate, endDate) {
 export function computeTourDates(stops, startDate, defaultRestDays = 1, defaultBufferDays = 1) {
   let cursor = startDate
   return stops.map((stop, i) => {
-    const rest   = stop.rest_days   ?? defaultRestDays
-    const buffer = stop.buffer_days ?? defaultBufferDays
+    const rest   = stop.rest_days   || defaultRestDays
+    const buffer = stop.buffer_days || defaultBufferDays
     const arrival    = i === 0 ? cursor : addDays(cursor, buffer)
     const departure  = addDays(arrival, rest)
     cursor = departure

@@ -107,22 +107,17 @@ export async function optimizeRoute(stops) {
 
   const sections = route.sections
 
-  // O(1) coordinate index: grid key → stop (resolution ~220 m, ±1 cell tolerance)
-  const GRID = 500
-  const stopIndex = new Map()
+  // Exact lookup on originalLocation (HERE echoes back our exact input coordinates).
+  // Truncate to 6 dp (~0.1 m) to absorb any float serialisation noise.
+  const fmt = n => Number(n).toFixed(6)
+  const exactIndex = new Map()
   allStops.forEach(s => {
     if (s.lat == null || s.lng == null) return
-    stopIndex.set(`${Math.round(s.lat * GRID)},${Math.round(s.lng * GRID)}`, s)
+    exactIndex.set(`${fmt(s.lat)},${fmt(s.lng)}`, s)
   })
 
   function findStop(lat, lng) {
-    const r = Math.round(lat * GRID)
-    const c = Math.round(lng * GRID)
-    for (let dr = -1; dr <= 1; dr++)
-      for (let dc = -1; dc <= 1; dc++) {
-        const s = stopIndex.get(`${r + dr},${c + dc}`)
-        if (s) return s
-      }
+    return exactIndex.get(`${fmt(lat)},${fmt(lng)}`)
   }
 
   const seen    = new Set()
