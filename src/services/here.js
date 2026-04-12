@@ -24,58 +24,52 @@ export async function enrichFromHERE(venue, fields) {
   if (fields.some(f => LOC_FIELDS.includes(f))) {
     const parts = [venue.address, venue.city, venue.state, venue.zip].filter(Boolean)
     if (parts.length >= 2) {
-      try {
-        const url =
-          `https://geocode.search.hereapi.com/v1/geocode` +
-          `?q=${encodeURIComponent(parts.join(', '))}&limit=1&apiKey=${KEY}`
-        const res  = await fetch(url)
-        if (res.ok) {
-          const { items } = await res.json()
-          const it = items?.[0]
-          if (it) {
-            const a = it.address
-            if (fields.includes('geocode')) {
-              result.lat = it.position.lat
-              result.lng = it.position.lng
-            }
-            if (fields.includes('address'))
-              result.address = [a.houseNumber, a.street].filter(Boolean).join(' ') || null
-            if (fields.includes('city'))         result.city         = a.city       ?? null
-            if (fields.includes('state'))        result.state        = a.stateCode  ?? null
-            if (fields.includes('zip'))          result.zip          = a.postalCode ?? null
-            if (fields.includes('neighborhood')) result.neighborhood = a.district   ?? null
-          }
+      const url =
+        `https://geocode.search.hereapi.com/v1/geocode` +
+        `?q=${encodeURIComponent(parts.join(', '))}&limit=1&apiKey=${KEY}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`HERE Geocode ${res.status} — key may need Geocoding service enabled`)
+      const { items } = await res.json()
+      const it = items?.[0]
+      if (it) {
+        const a = it.address
+        if (fields.includes('geocode')) {
+          result.lat = it.position.lat
+          result.lng = it.position.lng
         }
-      } catch (_) { /* geocode call failed silently */ }
+        if (fields.includes('address'))
+          result.address = [a.houseNumber, a.street].filter(Boolean).join(' ') || null
+        if (fields.includes('city'))         result.city         = a.city       ?? null
+        if (fields.includes('state'))        result.state        = a.stateCode  ?? null
+        if (fields.includes('zip'))          result.zip          = a.postalCode ?? null
+        if (fields.includes('neighborhood')) result.neighborhood = a.district   ?? null
+      }
     }
   }
 
   // ── Discover endpoint (contact / category fields) ──────────────────────────
   if (fields.some(f => POI_FIELDS.includes(f))) {
-    try {
-      const q = [venue.name, venue.city, venue.state].filter(Boolean).join(' ')
-      let url = `https://discover.search.hereapi.com/v1/discover` +
-                `?q=${encodeURIComponent(q)}&limit=1&apiKey=${KEY}`
-      if (venue.lat && venue.lng) url += `&at=${venue.lat},${venue.lng}`
-      else                        url += `&in=countryCode:USA`
+    const q = [venue.name, venue.city, venue.state].filter(Boolean).join(' ')
+    let url = `https://discover.search.hereapi.com/v1/discover` +
+              `?q=${encodeURIComponent(q)}&limit=1&apiKey=${KEY}`
+    if (venue.lat && venue.lng) url += `&at=${venue.lat},${venue.lng}`
+    else                        url += `&in=countryCode:USA`
 
-      const res = await fetch(url)
-      if (res.ok) {
-        const { items } = await res.json()
-        const it = items?.[0]
-        if (it) {
-          result._matchedTitle = it.title
-          if (fields.includes('phone'))
-            result.phone      = it.contacts?.[0]?.phone?.[0]?.value ?? null
-          if (fields.includes('website'))
-            result.website    = it.contacts?.[0]?.www?.[0]?.value   ?? null
-          if (fields.includes('venue_type'))
-            result.venue_type = it.categories?.[0]?.name            ?? null
-          if (fields.includes('capacity'))
-            result.capacity   = null   // HERE Discover does not carry capacity
-        }
-      }
-    } catch (_) { /* discover call failed silently */ }
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`HERE Discover ${res.status} — key may need Places/Discover service enabled`)
+    const { items } = await res.json()
+    const it = items?.[0]
+    if (it) {
+      result._matchedTitle = it.title
+      if (fields.includes('phone'))
+        result.phone      = it.contacts?.[0]?.phone?.[0]?.value ?? null
+      if (fields.includes('website'))
+        result.website    = it.contacts?.[0]?.www?.[0]?.value   ?? null
+      if (fields.includes('venue_type'))
+        result.venue_type = it.categories?.[0]?.name            ?? null
+      if (fields.includes('capacity'))
+        result.capacity   = null   // HERE Discover does not carry capacity
+    }
   }
 
   return result
