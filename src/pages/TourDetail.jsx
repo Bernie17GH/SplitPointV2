@@ -692,13 +692,13 @@ export default function TourDetail() {
           )}
         </div>
       ) : (
-        <div className="flex-1 mx-4 mb-24 rounded-2xl overflow-hidden border border-gray-100 shadow-sm" style={{ minHeight: 420 }}>
+        <div className="mx-4 mb-24 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
           {mapStops.length === 0 ? (
-            <div className="h-full flex items-center justify-center bg-gray-50">
+            <div className="flex items-center justify-center bg-gray-50" style={{ height: 420 }}>
               <p className="text-sm text-gray-400">Add stops with addresses to see the map</p>
             </div>
           ) : (
-            <HereMap stops={mapStops} legs={legs} className="w-full h-full" style={{ minHeight: 420 }} />
+            <HereMap stops={mapStops} legs={legs} className="w-full" style={{ height: 420 }} />
           )}
         </div>
       )}

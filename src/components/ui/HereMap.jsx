@@ -52,7 +52,7 @@ function numberedIcon(H, index, isFixed) {
  *   stops — [{ lat, lng, name, city, state, is_fixed }] in display order
  *   legs  — [{ encodedPolyline }] from HERE optimize, one per leg (optional)
  */
-export default function HereMap({ stops = [], legs = [], className = '' }) {
+export default function HereMap({ stops = [], legs = [], className = '', style = {} }) {
   const containerRef = useRef(null)
   const mapRef = useRef(null)
 
@@ -140,7 +140,7 @@ export default function HereMap({ stops = [], legs = [], className = '' }) {
 
   return (
     <div ref={containerRef} className={className}
-      style={{ background: '#e8e0d8' }} /* neutral while tiles load */
+      style={{ background: '#e8e0d8', ...style }} /* neutral while tiles load */
     />
   )
 }
