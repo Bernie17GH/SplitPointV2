@@ -5,7 +5,7 @@ const navItems = [
   { to: '/artists', label: 'Artists', icon: '🎤' },
   { to: '/tours',   label: 'Tours',   icon: '🗺️' },
   { to: '/venues',  label: 'Venues',  icon: '🏟️' },
-  { to: '/profile', label: 'Profile', icon: '👤' },
+  { to: '/settings', label: 'Settings', icon: '⚙️' },
 ]
 
 export default function BottomNav() {

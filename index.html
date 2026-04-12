@@ -8,6 +8,13 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Apply display prefs before React mounts to prevent flash -->
+    <script>
+      try {
+        if (localStorage.getItem('sp_dark') === 'true') document.documentElement.classList.add('dark')
+        if (localStorage.getItem('sp_compact') === 'true') document.documentElement.classList.add('compact')
+      } catch (_) {}
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

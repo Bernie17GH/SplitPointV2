@@ -10,3 +10,28 @@
     @apply bg-gray-50 text-gray-900 font-sans;
   }
 }
+
+/* ── Dark Mode ────────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+  /* Remap Tailwind's gray scale to dark equivalents */
+  --color-gray-50:  #0f172a;
+  --color-gray-100: #1e293b;
+  --color-gray-200: #334155;
+  --color-gray-300: #475569;
+  --color-gray-400: #94a3b8;
+  --color-gray-500: #cbd5e1;
+  --color-gray-700: #e2e8f0;
+  --color-gray-900: #f1f5f9;
+}
+
+/* Card and nav backgrounds use bg-white — remap to dark surface */
+html.dark .bg-white {
+  background-color: #1e293b;
+}
+
+/* ── Compact Mode ─────────────────────────────────────────────────────────── */
+/* Scales all rem-based sizes (Tailwind padding, font-size, etc.) down ~12.5% */
+html.compact {
+  font-size: 14px;
+}

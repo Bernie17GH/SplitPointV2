@@ -8,7 +8,7 @@ import Home from './pages/Home'
 import Artists from './pages/Artists'
 import Tours from './pages/Tours'
 import Venues from './pages/Venues'
-import Profile from './pages/Profile'
+import Settings from './pages/Settings'
 
 export default function App() {
   return (
@@ -23,7 +23,7 @@ export default function App() {
               <Route path="artists" element={<Artists />} />
               <Route path="tours" element={<Tours />} />
               <Route path="venues" element={<Venues />} />
-              <Route path="profile" element={<Profile />} />
+              <Route path="settings" element={<Settings />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Route>
