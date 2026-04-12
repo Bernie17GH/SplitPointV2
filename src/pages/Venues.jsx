@@ -222,7 +222,7 @@ export default function Venues() {
   }
 
   return (
-    <div className="px-4 py-8">
+    <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-6xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Venues</h1>
@@ -242,7 +242,7 @@ export default function Venues() {
         <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 mb-4">{error}</p>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-4 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
         {venues.map((venue) => (
           <VenueCard
             key={venue.id}

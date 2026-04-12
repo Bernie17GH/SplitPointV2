@@ -32,7 +32,7 @@ function TourCard({ tour, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="w-full rounded-2xl bg-white shadow-sm border border-gray-100 p-5 text-left hover:border-indigo-200 hover:shadow-md transition-all mb-3"
+      className="w-full rounded-2xl bg-white shadow-sm border border-gray-100 p-5 text-left hover:border-indigo-200 hover:shadow-md transition-all mb-3 md:mb-0"
     >
       <div className="flex items-start justify-between mb-2">
         <p className="font-semibold text-gray-900 text-base leading-tight pr-3">{tour.name}</p>
@@ -381,7 +381,7 @@ export default function Tours() {
   }
 
   return (
-    <div className="px-4 py-8">
+    <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Tours</h1>
@@ -406,7 +406,7 @@ export default function Tours() {
           </button>
         </div>
       ) : (
-        <div>
+        <div className="md:grid md:grid-cols-2 md:gap-4">
           {tours.map(t => (
             <TourCard key={t.id} tour={t} onClick={() => navigate(`/tours/${t.id}`)} />
           ))}

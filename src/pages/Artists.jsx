@@ -364,7 +364,7 @@ export default function Artists() {
   const cardProps = { user, isAdmin, onEdit: setEditing, onClaim: handleClaim, onRelease: handleRelease }
 
   return (
-    <div className="px-4 py-8">
+    <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-5xl">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Artists</h1>
@@ -385,14 +385,14 @@ export default function Artists() {
         <>
           <Section title={`Represented (${claimedByOther.length + myArtists.length})`} empty="None yet">
             {(claimedByOther.length + myArtists.length) > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 {[...myArtists, ...claimedByOther].map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             )}
           </Section>
           <Section title={`Unclaimed (${available.length})`} empty="None">
             {available.length > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 {available.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             )}
@@ -403,21 +403,21 @@ export default function Artists() {
         <>
           <Section title={`My Roster (${myArtists.length})`} empty="You haven't claimed any artists yet.">
             {myArtists.length > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 {myArtists.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             )}
           </Section>
           <Section title={`Available (${available.length})`} empty="No unclaimed artists at this time.">
             {available.length > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 {available.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             )}
           </Section>
           {claimedByOther.length > 0 && (
             <Section title={`Represented by others (${claimedByOther.length})`} empty="">
-              <div className="space-y-4">
+              <div className="space-y-4 md:grid md:grid-cols-2 md:gap-4 md:space-y-0">
                 {claimedByOther.map(a => <ArtistCard key={a.id} artist={a} {...cardProps} />)}
               </div>
             </Section>

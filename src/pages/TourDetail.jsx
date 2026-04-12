@@ -578,7 +578,7 @@ export default function TourDetail() {
   return (
     <div className="flex flex-col min-h-svh">
       {/* Header */}
-      <div className="px-4 pt-8 pb-4">
+      <div className="px-4 pt-8 pb-4 md:px-8 md:pt-10">
         <button onClick={() => navigate('/tours')} className="flex items-center gap-1 text-sm text-indigo-600 font-medium mb-4">
           ← Tours
         </button>
@@ -601,7 +601,7 @@ export default function TourDetail() {
       </div>
 
       {/* Optimize bar */}
-      <div className="mx-4 mb-3 rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-3">
+      <div className="mx-4 mb-3 md:mx-8 rounded-2xl bg-white border border-gray-100 shadow-sm px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-xs text-gray-500">
@@ -632,7 +632,7 @@ export default function TourDetail() {
 
       {/* Artist lineup */}
       {tour.tour_artists?.length > 0 && (
-        <div className="mx-4 mb-3">
+        <div className="mx-4 mb-3 md:mx-8">
           <div className="flex flex-wrap gap-1.5">
             {[...tour.tour_artists]
               .sort((a, b) => b.appearance_order - a.appearance_order)
@@ -645,8 +645,8 @@ export default function TourDetail() {
         </div>
       )}
 
-      {/* List / Map toggle + Add Stop */}
-      <div className="mx-4 mb-4 flex items-center gap-2">
+      {/* Mobile: List / Map toggle + Add Stop */}
+      <div className="mx-4 mb-4 flex items-center gap-2 md:hidden">
         <div className="flex-1 flex rounded-xl bg-gray-100 p-1 gap-1">
           {['list', 'map'].map(v => (
             <button key={v} onClick={() => setView(v)}
@@ -663,9 +663,51 @@ export default function TourDetail() {
         </button>
       </div>
 
-      {/* Content */}
-      {view === 'list' ? (
-        <div className="flex-1 px-4 pb-24">
+      {/* Desktop: Add Stop button */}
+      <div className="hidden md:flex mx-8 mb-4 justify-end">
+        <button
+          onClick={() => setAddingStop(true)}
+          className="rounded-xl bg-indigo-600 text-white text-sm font-semibold px-4 py-2 hover:bg-indigo-700 transition-colors"
+        >
+          + Stop
+        </button>
+      </div>
+
+      {/* Mobile content: toggled list or map */}
+      <div className="md:hidden">
+        {view === 'list' ? (
+          <div className="flex-1 px-4 pb-24">
+            {stops.length === 0 ? (
+              <div className="rounded-2xl bg-white border border-gray-100 shadow-sm text-center py-14">
+                <p className="text-gray-400 text-sm mb-3">No stops yet</p>
+                <button onClick={() => setAddingStop(true)}
+                  className="rounded-xl bg-indigo-600 text-white text-sm font-semibold px-5 py-2 hover:bg-indigo-700">
+                  Add first stop
+                </button>
+              </div>
+            ) : (
+              stops.map((stop, i) => (
+                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onRemove={handleRemove} />
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="mx-4 mb-24 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+            {mapStops.length === 0 ? (
+              <div className="flex items-center justify-center bg-gray-50" style={{ height: 420 }}>
+                <p className="text-sm text-gray-400">Add stops with addresses to see the map</p>
+              </div>
+            ) : (
+              <HereMap stops={mapStops} legs={legs} className="w-full" style={{ height: 420 }} />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Desktop content: side-by-side list + map */}
+      <div className="hidden md:grid md:grid-cols-2 md:gap-6 md:px-8 md:pb-10" style={{ gridTemplateColumns: '1fr 1.4fr' }}>
+        {/* Stop list */}
+        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
           {stops.length === 0 ? (
             <div className="rounded-2xl bg-white border border-gray-100 shadow-sm text-center py-14">
               <p className="text-gray-400 text-sm mb-3">No stops yet</p>
@@ -676,27 +718,21 @@ export default function TourDetail() {
             </div>
           ) : (
             stops.map((stop, i) => (
-              <StopCard
-                key={stop.id}
-                stop={stop}
-                seq={i + 1}
-                onPin={handlePin}
-                onRemove={handleRemove}
-              />
+              <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onRemove={handleRemove} />
             ))
           )}
         </div>
-      ) : (
-        <div className="mx-4 mb-24 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+        {/* Map */}
+        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
           {mapStops.length === 0 ? (
-            <div className="flex items-center justify-center bg-gray-50" style={{ height: 420 }}>
+            <div className="flex items-center justify-center bg-gray-50 h-full" style={{ minHeight: 480 }}>
               <p className="text-sm text-gray-400">Add stops with addresses to see the map</p>
             </div>
           ) : (
-            <HereMap stops={mapStops} legs={legs} className="w-full" style={{ height: 420 }} />
+            <HereMap stops={mapStops} legs={legs} className="w-full" style={{ minHeight: 480, height: '100%' }} />
           )}
         </div>
-      )}
+      </div>
 
       <AddStopSheet
         open={addingStop}

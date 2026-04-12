@@ -47,11 +47,11 @@ export default function Home() {
   }, [user, isAdmin])
 
   return (
-    <div className="px-4 py-8">
+    <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-4xl">
       <h1 className="text-3xl font-bold text-gray-900 mb-1">SplitPoint</h1>
       <p className="text-gray-500 mb-8">Concert tour management for artist agents.</p>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Artists"
           value={stats?.myArtists ?? '—'}
