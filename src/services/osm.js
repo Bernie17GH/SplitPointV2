@@ -22,34 +22,84 @@ const STATE_ABBR = {
 }
 
 /**
+ * Score how well a Nominatim result matches the venue name.
+ * Counts how many words from the venue name appear in the display_name.
+ * Returns a value 0–1; 1 = all words matched.
+ */
+function matchScore(venueName, displayName) {
+  const haystack = displayName.toLowerCase()
+  const words    = venueName.toLowerCase().split(/\s+/).filter(w => w.length > 2)
+  if (!words.length) return 0
+  const matched  = words.filter(w => haystack.includes(w)).length
+  return matched / words.length
+}
+
+/**
+ * Run one Nominatim search and return the parsed JSON array.
+ * Returns [] on any non-200 or network error.
+ */
+async function nominatimSearch(params) {
+  params.set('format',         'json')
+  params.set('addressdetails', '1')
+  params.set('extratags',      '1')
+  params.set('limit',          '5')
+  try {
+    const res = await fetch(`${NOMINATIM_URL}?${params}`, {
+      headers: { 'User-Agent': 'SplitPoint-venue-lookup/1.0' },
+    })
+    if (!res.ok) return []
+    return await res.json()
+  } catch {
+    return []
+  }
+}
+
+/**
  * Look up venue details from OpenStreetMap via Nominatim.
- * venue  : { name, city, state, address?, lat?, lng? }
+ * Tries three search strategies in order and picks the best-matching result:
+ *   1. Structured search  — amenity name + city + country
+ *   2. Free-text search   — name + city + country
+ *   3. Free-text fallback — name + zip (if zip available)
+ *
+ * venue  : { name, city, state, zip?, address?, lat?, lng? }
  * fields : array of field keys
  * Returns a partial object; empty {} if not found.
- * Throws on network / non-200 response so callers can surface the error.
+ * Throws only on hard errors so callers can surface them.
  */
 export async function enrichFromOSM(venue, fields) {
-  const q = [venue.name, venue.city, venue.state, 'USA'].filter(Boolean).join(', ')
-
-  const params = new URLSearchParams({
-    q,
-    format:         'json',
-    addressdetails: '1',
-    extratags:      '1',
-    limit:          '5',
+  // Strategy 1: structured search (amenity = venue name, scoped to city)
+  const structuredParams = new URLSearchParams({
+    amenity: venue.name,
+    city:    venue.city ?? '',
+    country: 'US',
   })
 
-  const res = await fetch(`${NOMINATIM_URL}?${params}`, {
-    headers: { 'User-Agent': 'SplitPoint-venue-lookup/1.0' },
+  // Strategy 2: free-text name + city
+  const cityParams = new URLSearchParams({
+    q: [venue.name, venue.city, 'USA'].filter(Boolean).join(', '),
   })
-  if (!res.ok) throw new Error(`OSM ${res.status}`)
-  const items = await res.json()
-  if (!items.length) return {}
 
-  // Pick the result whose display name best matches the venue name
-  const lower = venue.name.toLowerCase()
-  const best  =
-    items.find(i => i.display_name.toLowerCase().includes(lower)) ?? items[0]
+  // Strategy 3: free-text name + zip (if available)
+  const zipParams = venue.zip ? new URLSearchParams({
+    q: [venue.name, venue.zip, 'USA'].filter(Boolean).join(', '),
+  }) : null
+
+  const [structured, byCity, byZip] = await Promise.all([
+    nominatimSearch(structuredParams),
+    nominatimSearch(cityParams),
+    zipParams ? nominatimSearch(zipParams) : Promise.resolve([]),
+  ])
+
+  // Merge all candidates, score each, pick the best match above threshold
+  const allItems = [...structured, ...byCity, ...byZip]
+  if (!allItems.length) return {}
+
+  const scored = allItems.map(i => ({ item: i, score: matchScore(venue.name, i.display_name) }))
+  scored.sort((a, b) => b.score - a.score)
+
+  // Accept result if at least half the meaningful words matched; else skip
+  if (scored[0].score < 0.5) return {}
+  const best = scored[0].item
 
   const ext  = best.extratags ?? {}
   const addr = best.address   ?? {}
