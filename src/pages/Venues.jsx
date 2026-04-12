@@ -185,11 +185,14 @@ export default function Venues() {
 
   const [venues, setVenues] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
 
   useEffect(() => {
+    setError('')
     readTable('venues')
       .then(setVenues)
+      .catch(err => setError(err.message ?? 'Failed to load venues'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -216,6 +219,9 @@ export default function Venues() {
       <p className="text-xs text-gray-400 mb-4">
         {loading ? 'Loading…' : `${venues.length} venues`}
       </p>
+      {error && (
+        <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 mb-4">{error}</p>
+      )}
 
       <div className="space-y-4">
         {venues.map((venue) => (
