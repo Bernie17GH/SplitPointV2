@@ -1,4 +1,5 @@
-const KEY = import.meta.env.VITE_HERE_MAPS_KEY
+const MAPS_KEY = import.meta.env.VITE_HERE_MAPS_KEY  // JS Maps SDK (map rendering)
+const REST_KEY = import.meta.env.VITE_HERE_API_KEY   // REST APIs: geocoding, routing, discover
 
 /**
  * Look up venue details via HERE Discover (POI search).
@@ -8,7 +9,7 @@ const KEY = import.meta.env.VITE_HERE_MAPS_KEY
 export async function lookupVenueDetails(venue, fields) {
   const q = [venue.name, venue.city, venue.state].filter(Boolean).join(' ')
   let url = `https://discover.search.hereapi.com/v1/discover`
-    + `?q=${encodeURIComponent(q)}&limit=1&apiKey=${KEY}`
+    + `?q=${encodeURIComponent(q)}&limit=1&apiKey=${REST_KEY}`
   // Anchor search to known coordinates when available; otherwise restrict to USA
   if (venue.lat && venue.lng) url += `&at=${venue.lat},${venue.lng}`
   else url += `&in=countryCode:USA`
@@ -39,7 +40,7 @@ export async function lookupVenueDetails(venue, fields) {
 export async function geocodeAddress(address) {
   const url =
     `https://geocode.search.hereapi.com/v1/geocode` +
-    `?q=${encodeURIComponent(address)}&limit=1&apiKey=${KEY}`
+    `?q=${encodeURIComponent(address)}&limit=1&apiKey=${REST_KEY}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Geocoding HTTP ${res.status}`)
   const data = await res.json()
@@ -79,7 +80,7 @@ export async function optimizeRoute(stops) {
   midpoints.forEach(s => { url += `&via=${s.lat},${s.lng}` })
   if (midpoints.length > 0) url += `&optimizeWaypointOrder=true`
   url += `&return=summary,polyline`
-  url += `&apiKey=${KEY}`
+  url += `&apiKey=${REST_KEY}`
 
   const res = await fetch(url)
   if (!res.ok) {
