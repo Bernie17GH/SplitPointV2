@@ -120,27 +120,34 @@ export async function optimizeRoute(stops) {
     return exactIndex.get(`${fmt(lat)},${fmt(lng)}`)
   }
 
+  // Origin (first) and destination (last) are fixed — HERE does not echo back
+  // originalLocation for those, only for via waypoints. Assign them directly
+  // by position and use exact coordinate matching only for the midpoints.
   const seen    = new Set()
   const ordered = []
 
   for (let i = 0; i < sections.length; i++) {
-    const dep    = sections[i].departure.place
-    const depLat = dep.originalLocation?.lat ?? dep.location?.lat
-    const depLng = dep.originalLocation?.lng ?? dep.location?.lng
-    const match  = findStop(depLat, depLng)
+    let match
+    if (i === 0) {
+      // First section departure is always the origin
+      match = first
+    } else {
+      const dep    = sections[i].departure.place
+      const depLat = dep.originalLocation?.lat ?? dep.location?.lat
+      const depLng = dep.originalLocation?.lng ?? dep.location?.lng
+      match = findStop(depLat, depLng)
+    }
     if (match && !seen.has(match.id)) { seen.add(match.id); ordered.push(match) }
 
     if (i === sections.length - 1) {
-      const arr    = sections[i].arrival.place
-      const arrLat = arr.originalLocation?.lat ?? arr.location?.lat
-      const arrLng = arr.originalLocation?.lng ?? arr.location?.lng
-      const arrMatch = findStop(arrLat, arrLng)
+      // Last section arrival is always the destination
+      const arrMatch = last ?? first
       if (arrMatch && !seen.has(arrMatch.id)) { seen.add(arrMatch.id); ordered.push(arrMatch) }
     }
   }
 
   if (ordered.length < stops.length) {
-    console.warn('HERE optimize: coordinate match incomplete, using original order')
+    console.warn('HERE optimize: via-waypoint match incomplete, using original order')
     return { orderedStops: stops, legs: [] }
   }
 
