@@ -74,12 +74,12 @@ function StopCard({ stop, seq, onPin, onRemove }) {
 // ─── Add Stop sheet ───────────────────────────────────────────────────────────
 
 function AddStopSheet({ open, onClose, tourId, onAdded }) {
-  const [query, setQuery]         = useState('')
-  const [results, setResults]     = useState([])
-  const [mode, setMode]           = useState('search') // 'search' | 'create'
-  const [selected, setSelected]   = useState(null)
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState([])
+  const [mode, setMode]             = useState('search') // 'search' | 'stop-opts' | 'create'
+  const [checkedIds, setCheckedIds] = useState(new Set()) // multi-select
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState('')
 
   const [newVenue, setNewVenue] = useState({
     name: '', address: '', city: '', state: '', zip: '',
@@ -89,20 +89,23 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
   useEffect(() => {
     if (!open) {
       setQuery(''); setResults([]); setMode('search')
-      setSelected(null); setError(''); setSaving(false)
+      setCheckedIds(new Set()); setError(''); setSaving(false)
       setNewVenue({ name: '', address: '', city: '', state: '', zip: '' })
       setStopOpts({ rest_days: '', buffer_days: '', is_fixed: false })
     }
   }, [open])
 
+  // Search venues by city name
   useEffect(() => {
     if (query.length < 2) { setResults([]); return }
     const t = setTimeout(() => {
       supabase.from('venues')
         .select('id, name, city, state, address, lat, lng')
-        .ilike('name', `%${query}%`)
-        .limit(8)
-        .then(({ data }) => setResults(data ?? []))
+        .ilike('city', `%${query}%`)
+        .order('city')
+        .order('name')
+        .limit(30)
+        .then(({ data }) => { setResults(data ?? []); setCheckedIds(new Set()) })
     }, 250)
     return () => clearTimeout(t)
   }, [query])
@@ -110,21 +113,52 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
   function setNV(field, val) { setNewVenue(v => ({ ...v, [field]: val })) }
   function setSO(field, val) { setStopOpts(o => ({ ...o, [field]: val })) }
 
-  async function saveStop(venueId, lat, lng) {
-    await supabase.from('tour_stops').insert({
-      tour_id: tourId,
-      venue_id: venueId,
-      sequence_order: 9999,
-      rest_days:   stopOpts.rest_days   ? parseInt(stopOpts.rest_days)   : null,
-      buffer_days: stopOpts.buffer_days ? parseInt(stopOpts.buffer_days) : null,
-      is_fixed: stopOpts.is_fixed,
+  function toggleCheck(id) {
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
     })
-    onAdded()
   }
 
-  async function handleSelectExisting(venue) {
-    setSelected(venue)
-    setMode('stop-opts')
+  function toggleAll() {
+    if (checkedIds.size === results.length) {
+      setCheckedIds(new Set())
+    } else {
+      setCheckedIds(new Set(results.map(v => v.id)))
+    }
+  }
+
+  // Geocode any venue missing coordinates, then batch-insert all stops
+  async function handleSaveSelected() {
+    setSaving(true); setError('')
+    try {
+      const venues = results.filter(v => checkedIds.has(v.id))
+
+      // Geocode venues missing lat/lng
+      const geocoded = await Promise.all(venues.map(async v => {
+        if (v.lat && v.lng) return v
+        const full = `${v.address}, ${v.city}, ${v.state}`
+        const geo = await geocodeAddress(full)
+        await supabase.from('venues').update({ lat: geo.lat, lng: geo.lng }).eq('id', v.id)
+        return { ...v, lat: geo.lat, lng: geo.lng }
+      }))
+
+      const rows = geocoded.map(v => ({
+        tour_id:        tourId,
+        venue_id:       v.id,
+        sequence_order: 9999,
+        rest_days:      stopOpts.rest_days   ? parseInt(stopOpts.rest_days)   : null,
+        buffer_days:    stopOpts.buffer_days ? parseInt(stopOpts.buffer_days) : null,
+        is_fixed:       stopOpts.is_fixed,
+      }))
+
+      const { error: insertErr } = await supabase.from('tour_stops').insert(rows)
+      if (insertErr) throw insertErr
+      onAdded()
+    } catch (e) {
+      setError(e.message); setSaving(false)
+    }
   }
 
   async function handleSaveNew() {
@@ -139,76 +173,179 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
         .insert({ ...newVenue, lat: geo.lat, lng: geo.lng, availability: 'unconfirmed' })
         .select().single()
       if (vErr) throw vErr
-      await saveStop(venue.id, geo.lat, geo.lng)
-    } catch (e) {
-      setError(e.message); setSaving(false)
-    }
-  }
-
-  async function handleSaveExisting() {
-    setSaving(true); setError('')
-    try {
-      // Geocode if missing lat/lng
-      let { lat, lng } = selected
-      if (!lat || !lng) {
-        const full = `${selected.address}, ${selected.city}, ${selected.state}`
-        const geo = await geocodeAddress(full)
-        lat = geo.lat; lng = geo.lng
-        await supabase.from('venues').update({ lat, lng }).eq('id', selected.id)
-      }
-      await saveStop(selected.id, lat, lng)
+      await supabase.from('tour_stops').insert({
+        tour_id:        tourId,
+        venue_id:       venue.id,
+        sequence_order: 9999,
+        rest_days:      stopOpts.rest_days   ? parseInt(stopOpts.rest_days)   : null,
+        buffer_days:    stopOpts.buffer_days ? parseInt(stopOpts.buffer_days) : null,
+        is_fixed:       stopOpts.is_fixed,
+      })
+      onAdded()
     } catch (e) {
       setError(e.message); setSaving(false)
     }
   }
 
   const inputCls = 'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+  const selectedVenues = results.filter(v => checkedIds.has(v.id))
+  const allChecked = results.length > 0 && checkedIds.size === results.length
+
+  const sheetTitle =
+    mode === 'create'    ? 'New Venue' :
+    mode === 'stop-opts' ? `Stop Options — ${checkedIds.size} venue${checkedIds.size !== 1 ? 's' : ''}` :
+    'Add Stop'
 
   return (
-    <BottomSheet open={open} onClose={onClose} title={
-      mode === 'search' ? 'Add Stop' :
-      mode === 'create' ? 'New Venue' :
-      `Stop Options — ${selected?.name}`
-    }>
+    <BottomSheet open={open} onClose={onClose} title={sheetTitle}>
       <div className="space-y-4">
 
-        {/* Search mode */}
+        {/* ── Search / select mode ── */}
         {mode === 'search' && (
           <>
-            <input value={query} onChange={e => setQuery(e.target.value)}
-              placeholder="Search venue by name…"
-              className={inputCls} autoFocus />
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search by city…"
+              className={inputCls}
+              autoFocus
+            />
+
             {results.length > 0 && (
-              <div className="space-y-2">
-                {results.map(v => (
-                  <button key={v.id} onClick={() => handleSelectExisting(v)}
-                    className="w-full rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-left hover:border-indigo-200 transition-colors">
-                    <p className="text-sm font-medium text-gray-900">{v.name}</p>
-                    <p className="text-xs text-gray-400">{[v.city, v.state].filter(Boolean).join(', ')}</p>
+              <>
+                {/* Select-all row */}
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-xs text-gray-400">
+                    {results.length} venue{results.length !== 1 ? 's' : ''} in{' '}
+                    <span className="font-medium text-gray-600">{results[0].city}{results.some(v => v.city !== results[0].city) ? ' area' : ''}</span>
+                  </p>
+                  <button
+                    onClick={toggleAll}
+                    className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                  >
+                    {allChecked ? 'Deselect all' : 'Select all'}
                   </button>
-                ))}
-              </div>
+                </div>
+
+                {/* Venue list */}
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {results.map(v => {
+                    const checked = checkedIds.has(v.id)
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => toggleCheck(v.id)}
+                        className={`w-full rounded-xl border px-4 py-3 text-left flex items-center gap-3 transition-colors ${
+                          checked
+                            ? 'bg-indigo-50 border-indigo-300'
+                            : 'bg-gray-50 border-gray-100 hover:border-indigo-200'
+                        }`}
+                      >
+                        {/* Checkbox indicator */}
+                        <span className={`h-5 w-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          checked ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 bg-white'
+                        }`}>
+                          {checked && (
+                            <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                            </svg>
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{v.name}</p>
+                          <p className="text-xs text-gray-400">{[v.city, v.state].filter(Boolean).join(', ')}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
             )}
+
             {query.length >= 2 && results.length === 0 && (
-              <p className="text-sm text-gray-400 text-center py-2">No venues found for "{query}"</p>
+              <p className="text-sm text-gray-400 text-center py-2">No venues found in "{query}"</p>
             )}
-            <button onClick={() => setMode('create')}
-              className="w-full rounded-xl border border-dashed border-indigo-300 text-indigo-600 text-sm font-medium py-2.5 hover:bg-indigo-50 transition-colors">
+
+            {/* Proceed / new venue actions */}
+            {checkedIds.size > 0 && (
+              <button
+                onClick={() => setMode('stop-opts')}
+                className="w-full rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 hover:bg-indigo-700 transition-colors"
+              >
+                Continue with {checkedIds.size} venue{checkedIds.size !== 1 ? 's' : ''} →
+              </button>
+            )}
+
+            <button
+              onClick={() => setMode('create')}
+              className="w-full rounded-xl border border-dashed border-indigo-300 text-indigo-600 text-sm font-medium py-2.5 hover:bg-indigo-50 transition-colors"
+            >
               + Add new venue
             </button>
           </>
         )}
 
-        {/* Create new venue mode */}
+        {/* ── Stop options for selected existing venues ── */}
+        {mode === 'stop-opts' && (
+          <>
+            {/* Summary of selected venues */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1 max-h-32 overflow-y-auto">
+              {selectedVenues.map(v => (
+                <p key={v.id} className="text-sm text-gray-700 truncate">
+                  <span className="font-medium">{v.name}</span>
+                  <span className="text-gray-400"> · {v.city}, {v.state}</span>
+                </p>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Rest days (override)</label>
+                <input type="number" min="0" value={stopOpts.rest_days}
+                  onChange={e => setSO('rest_days', e.target.value)}
+                  placeholder="Tour default" className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Buffer days (override)</label>
+                <input type="number" min="0" value={stopOpts.buffer_days}
+                  onChange={e => setSO('buffer_days', e.target.value)}
+                  placeholder="Tour default" className={inputCls} />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-t border-gray-50">
+              <div>
+                <p className="text-sm font-medium text-gray-900">Pin dates as fixed</p>
+                <p className="text-xs text-gray-400">Route optimization won't move these stops</p>
+              </div>
+              <button onClick={() => setSO('is_fixed', !stopOpts.is_fixed)}
+                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${stopOpts.is_fixed ? 'bg-red-500' : 'bg-gray-200'}`}>
+                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-0.5 ${stopOpts.is_fixed ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {error && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => setMode('search')}
+                className="flex-1 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold py-2.5">Back</button>
+              <button onClick={handleSaveSelected} disabled={saving}
+                className="flex-1 rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 disabled:opacity-60">
+                {saving ? 'Adding…' : `Add ${checkedIds.size} Stop${checkedIds.size !== 1 ? 's' : ''}`}
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── Create new venue mode ── */}
         {mode === 'create' && (
           <>
             <p className="text-xs text-gray-500">This venue will be added to the venue directory.</p>
             {[
-              { label: 'Venue Name *', field: 'name',    placeholder: 'e.g. The Tabernacle' },
-              { label: 'Street Address *', field: 'address', placeholder: '152 Luckie St NW' },
-              { label: 'City *',       field: 'city',    placeholder: 'Atlanta' },
-              { label: 'State *',      field: 'state',   placeholder: 'GA' },
-              { label: 'ZIP',          field: 'zip',     placeholder: '30303' },
+              { label: 'Venue Name *',      field: 'name',    placeholder: 'e.g. The Tabernacle' },
+              { label: 'Street Address *',  field: 'address', placeholder: '152 Luckie St NW' },
+              { label: 'City *',            field: 'city',    placeholder: 'Atlanta' },
+              { label: 'State *',           field: 'state',   placeholder: 'GA' },
+              { label: 'ZIP',               field: 'zip',     placeholder: '30303' },
             ].map(({ label, field, placeholder }) => (
               <div key={field}>
                 <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
@@ -216,7 +353,6 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                   placeholder={placeholder} className={inputCls} />
               </div>
             ))}
-            {/* Stop options inline */}
             <div className="border-t border-gray-100 pt-3 space-y-3">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Stop Options</p>
               <div className="grid grid-cols-2 gap-3">
@@ -241,45 +377,6 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
               <button onClick={handleSaveNew} disabled={saving}
                 className="flex-1 rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 disabled:opacity-60">
                 {saving ? 'Saving…' : 'Add Stop'}
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Stop options for existing venue */}
-        {mode === 'stop-opts' && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Rest days (override)</label>
-                <input type="number" min="0" value={stopOpts.rest_days}
-                  onChange={e => setSO('rest_days', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Buffer days (override)</label>
-                <input type="number" min="0" value={stopOpts.buffer_days}
-                  onChange={e => setSO('buffer_days', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2 border-t border-gray-50">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Pin this date as fixed</p>
-                <p className="text-xs text-gray-400">Route optimization won't move this stop</p>
-              </div>
-              <button onClick={() => setSO('is_fixed', !stopOpts.is_fixed)}
-                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${stopOpts.is_fixed ? 'bg-red-500' : 'bg-gray-200'}`}>
-                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-0.5 ${stopOpts.is_fixed ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </button>
-            </div>
-            {error && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
-            <div className="flex gap-2">
-              <button onClick={() => setMode('search')}
-                className="flex-1 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold py-2.5">Back</button>
-              <button onClick={handleSaveExisting} disabled={saving}
-                className="flex-1 rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 disabled:opacity-60">
-                {saving ? 'Adding…' : 'Add Stop'}
               </button>
             </div>
           </>
