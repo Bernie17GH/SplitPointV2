@@ -34,18 +34,29 @@ export function formatDateRange(startDate, endDate) {
  * Compute arrival_date and departure_date for each stop sequentially.
  *
  *   arrival[0]   = startDate
- *   departure[i] = arrival[i] + rest_days[i]        (days at venue)
- *   arrival[i+1] = departure[i] + buffer_days[i+1]  (travel / off days)
+ *   gap[i]       = max(floor(legs[i-1].durationHours / 24), buffer_days[i])
+ *   arrival[i]   = departure[i-1] + gap[i]
+ *   departure[i] = arrival[i] + rest_days[i]
  *
+ * Travel time from HERE drives the date gap; buffer_days is a minimum floor.
+ * rest_days = 0 means a same-day show (valid for local tours).
  * Per-stop rest_days / buffer_days fall back to tour defaults when null.
+ *
+ * legs: optional array of { durationHours } from optimizeRoute, one per leg.
  */
-export function computeTourDates(stops, startDate, defaultRestDays = 1, defaultBufferDays = 1) {
+export function computeTourDates(stops, startDate, defaultRestDays = 0, defaultBufferDays = 0, legs = []) {
   let cursor = startDate
   return stops.map((stop, i) => {
-    const rest   = stop.rest_days   || defaultRestDays
-    const buffer = stop.buffer_days || defaultBufferDays
-    const arrival    = i === 0 ? cursor : addDays(cursor, buffer)
-    const departure  = addDays(arrival, rest)
+    const rest   = stop.rest_days   ?? defaultRestDays
+    const buffer = stop.buffer_days ?? defaultBufferDays
+
+    const travelDays = i > 0 && legs[i - 1]?.durationHours
+      ? Math.floor(legs[i - 1].durationHours / 24)
+      : 0
+
+    const gap       = Math.max(travelDays, buffer)
+    const arrival   = i === 0 ? cursor : addDays(cursor, gap)
+    const departure = addDays(arrival, rest)
     cursor = departure
     return { ...stop, arrival_date: arrival, departure_date: departure }
   })

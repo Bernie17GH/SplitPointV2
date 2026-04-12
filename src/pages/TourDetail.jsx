@@ -469,8 +469,9 @@ export default function TourDetail() {
       const dated = computeTourDates(
         orderedFullStops,
         tour.start_date ?? new Date().toISOString().split('T')[0],
-        tour.default_rest_days  || 1,
-        tour.default_buffer_days || 1
+        tour.default_rest_days  ?? 0,
+        tour.default_buffer_days ?? 0,
+        newLegs
       )
 
       // Batch all stop updates + tour counter in two parallel calls
