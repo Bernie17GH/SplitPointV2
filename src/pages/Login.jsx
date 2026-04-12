@@ -7,6 +7,7 @@ export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const from = location.state?.from ?? '/'
+  const inactivity = location.state?.reason === 'inactivity'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -34,6 +35,12 @@ export default function Login() {
           <h1 className="text-3xl font-bold text-gray-900">SplitPoint</h1>
           <p className="text-gray-400 mt-1 text-sm">Sign in to your account</p>
         </div>
+
+        {inactivity && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mb-4 text-center">
+            You were signed out after 10 minutes of inactivity.
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
           <div>

@@ -54,7 +54,28 @@ export function AuthProvider({ children }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    // Re-validate the session when the app returns from background.
+    // This prevents stale-token 404 errors after the device sleeps or the
+    // tab is restored — Supabase will silently refresh the JWT if needed.
+    async function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
+          setUser(await fetchProfile(session.user))
+        } else {
+          setUser(null)
+        }
+      } catch (e) {
+        console.warn('visibilitychange session check error:', e)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      subscription.unsubscribe()
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   async function signIn(email, password) {
