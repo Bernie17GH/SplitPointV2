@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { geocodeAddress, optimizeRoute } from '../services/here'
-import { computeTourDates, formatDateRange, formatHour, timeStrToHour, hourToTimeStr } from '../services/tourDates'
+import { computeTourDates, formatDateRange, formatArrivalTime, formatHour, timeStrToHour, hourToTimeStr } from '../services/tourDates'
 import BottomSheet from '../components/ui/BottomSheet'
 import HereMap from '../components/ui/HereMap'
 
@@ -82,6 +82,14 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaul
         <div className="border-t border-gray-50 px-4 py-3 space-y-2 bg-gray-50">
           {stop.travel_hours_from_prev != null && (
             <p className="text-xs text-gray-500">Drive from previous: <span className="font-medium">{stop.travel_hours_from_prev}h</span></p>
+          )}
+          {stop.arrival_date && (
+            <p className="text-xs text-gray-500">
+              Arrives: <span className="font-medium">{formatArrivalTime(stop.arrival_date)}</span>
+              {stop.departure_date && (
+                <> &nbsp;·&nbsp; Departs: <span className="font-medium">{formatArrivalTime(stop.departure_date)}</span></>
+              )}
+            </p>
           )}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {(() => {

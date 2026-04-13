@@ -12,20 +12,66 @@ export function addDays(dateStr, n) {
   ].join('-')
 }
 
-const DATE_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+/**
+ * Build an ISO-8601 local datetime string from a YYYY-MM-DD date and a
+ * decimal hour offset from midnight (e.g. 13.5 → "2026-05-04T13:30:00").
+ * Clamps hours that overflow past midnight into the next calendar day.
+ */
+function toLocalISO(dateStr, decimalHour) {
+  const totalMins = Math.round(decimalHour * 60)
+  const extraDays = Math.floor(totalMins / (24 * 60))
+  const minOfDay  = totalMins % (24 * 60)
+  const hh = String(Math.floor(minOfDay / 60)).padStart(2, '0')
+  const mm = String(minOfDay % 60).padStart(2, '0')
+  const base = extraDays > 0 ? addDays(dateStr, extraDays) : dateStr
+  return `${base}T${hh}:${mm}:00`
+}
+
+const DATE_FMT     = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+const DATETIME_FMT = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+
+/**
+ * Parse a date or datetime string into a local Date without UTC-shift.
+ * Handles "YYYY-MM-DD", "YYYY-MM-DDTHH:MM:SS", and "YYYY-MM-DDTHH:MM:SS+00:00".
+ * All tour times are wall-clock local times — timezone offsets are stripped.
+ */
+function parseLocal(str) {
+  if (!str) return null
+  // Strip any timezone offset so JS treats it as local time (not UTC)
+  const local = str.replace(/[Zz]$/, '').replace(/[+-]\d{2}:\d{2}$/, '')
+  // Date-only: append midnight to avoid UTC interpretation
+  return new Date(local.includes('T') ? local : local + 'T00:00:00')
+}
 
 /**
  * Format a date range as "Oct 14 – Nov 2, 2026".
+ * Works with both date-only ("YYYY-MM-DD") and datetime ("YYYY-MM-DDTHH:MM:SS") strings.
  */
 export function formatDateRange(startDate, endDate) {
-  const s = new Date(startDate + 'T00:00:00')
-  const e = new Date(endDate   + 'T00:00:00')
+  const s = parseLocal(startDate)
+  const e = parseLocal(endDate)
+  if (!s || !e) return ''
   const sYear = s.getFullYear()
   const eYear = e.getFullYear()
   if (sYear !== eYear) {
     return `${DATE_FMT.format(s)}, ${sYear} – ${DATE_FMT.format(e)}, ${eYear}`
   }
   return `${DATE_FMT.format(s)} – ${DATE_FMT.format(e)}, ${eYear}`
+}
+
+/**
+ * Format an arrival datetime string as "May 4, 1:12 PM".
+ * Falls back gracefully if the value is date-only or null.
+ */
+export function formatArrivalTime(datetimeStr) {
+  if (!datetimeStr) return null
+  const d = parseLocal(datetimeStr)
+  if (!d) return null
+  // If it has a time component and the time is not midnight, show date+time
+  if (datetimeStr.includes('T') && !/T00:00:00/.test(datetimeStr)) {
+    return DATETIME_FMT.format(d)
+  }
+  return DATE_FMT.format(d)
 }
 
 /**
@@ -99,13 +145,15 @@ export function computeTourDates(stops, startDate, defaults = {}, legs = []) {
     const breakdown   = stop.breakdown_hours           ?? defaultBreakdownHours
     const restDays    = stop.rest_days                 ?? defaultRestDays
 
+    // Capture arrival hour for THIS stop before the cursor advances
+    const arrivalHourOfDay = i === 0 ? 0 : elapsedHours % 24
+
     // Which calendar day (offset from startDate) does the show fall on?
     let showDayOffset
     if (i === 0) {
       showDayOffset = 0
     } else {
       const arrivalDayOffset  = Math.floor(elapsedHours / 24)
-      const arrivalHourOfDay  = elapsedHours - arrivalDayOffset * 24
       const setupDeadlineHour = showStart - setup  // crew must arrive by this hour
 
       showDayOffset = arrivalDayOffset
@@ -129,8 +177,8 @@ export function computeTourDates(stops, startDate, defaults = {}, legs = []) {
 
     return {
       ...stop,
-      arrival_date:   addDays(startDate, showDayOffset),
-      departure_date: addDays(startDate, departureDayOffset),
+      arrival_date:   toLocalISO(addDays(startDate, showDayOffset),      arrivalHourOfDay),
+      departure_date: toLocalISO(addDays(startDate, departureDayOffset),  departureHourOfDay),
     }
   })
 }
