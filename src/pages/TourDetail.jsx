@@ -20,7 +20,7 @@ function LegConnector({ stop, twoDriver }) {
   const hours = stop.travel_hours_from_prev ?? stop.estimated_drive_hours
   if (!hours) return null
   const miles        = stop.distance_miles_from_prev
-  const needs2Driver = twoDriver && hours > 8
+  const needs2Driver = stop.requires_two_driver || (twoDriver && hours > 8)
   return (
     <div className="flex items-center gap-2 px-4 py-1 my-1">
       <div className="w-0.5 h-4 bg-gray-200 mx-3 shrink-0" />
@@ -1074,8 +1074,8 @@ export default function TourDetail() {
     return map
   }, [compliance])
 
-  async function handleSwitchToTwoDriver() {
-    await supabase.from('tours').update({ driver_count: 2 }).eq('id', id)
+  async function handleSwitchToTwoDriver(stopId) {
+    await supabase.from('tour_stops').update({ requires_two_driver: true }).eq('id', stopId)
     loadTour()
   }
 
@@ -1366,7 +1366,7 @@ export default function TourDetail() {
                   {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} />}
                   {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                     <ComplianceWarningBanner key={wi} warning={w}
-                      onSwitchToTwoDriver={handleSwitchToTwoDriver}
+                      onSwitchToTwoDriver={() => handleSwitchToTwoDriver(w.stopId)}
                       onAddRestStop={() => handleAddRestStop(w.stopIndex - 1)} />
                   ))}
                   <StopCard stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
