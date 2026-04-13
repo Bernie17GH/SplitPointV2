@@ -121,29 +121,53 @@ export async function enrichFromBrave(venue, fields) {
     }
 
     if (wantPhone) {
-      // 1. Infobox attributes (structured data from Brave)
+      // 1. Infobox attributes (structured data from Brave's knowledge panel)
       const phoneAttr = infobox?.attributes?.find(a =>
         /phone|telephone|contact/i.test(a.name ?? a.label ?? '')
       )
-      if (phoneAttr?.value) {
-        result.phone = phoneAttr.value
-      }
+      if (phoneAttr?.value) result.phone = phoneAttr.value
 
-      // 2. Fetch the venue's own website (homepage + contact page) and extract phone
-      if (!result.phone) {
-        const siteUrl = result.website
-        if (siteUrl) {
-          try {
-            const pageRes = await fetch(`/api/fetch-page?url=${encodeURIComponent(siteUrl)}`)
-            if (pageRes.ok) {
-              const { phone } = await pageRes.json()
-              if (phone) result.phone = phone
+      // 2. site:<domain> Brave search — Brave's crawler executes JavaScript, so
+      //    rendered footer content (where phone numbers usually live) appears in
+      //    snippets even though a plain fetch() would miss it entirely.
+      if (!result.phone && result.website && !braveLimitReached()) {
+        try {
+          const domain = new URL(result.website).hostname
+          increment()
+          const siteRes = await fetch(`/api/search?q=${encodeURIComponent(`site:${domain}`)}&count=10`)
+          if (siteRes.ok) {
+            const siteData    = await siteRes.json()
+            const siteResults = siteData.web?.results ?? []
+            for (const r of siteResults) {
+              const text  = `${r.title ?? ''} ${r.description ?? ''}`
+              const match = text.match(PHONE_RE)
+              if (match) { result.phone = match[0]; break }
             }
-          } catch {}
-        }
+            // Also check the infobox that comes back with the site: query
+            if (!result.phone) {
+              const siteInbox = siteData.infobox?.results?.[0]
+              const attr = siteInbox?.attributes?.find(a =>
+                /phone|telephone|contact/i.test(a.name ?? a.label ?? '')
+              )
+              if (attr?.value) result.phone = attr.value
+            }
+          }
+        } catch {}
       }
 
-      // 3. Scan first-pass Brave web snippets for phone number
+      // 3. Raw page fetch — works for static/server-rendered sites where the phone
+      //    is present in the raw HTML (homepage, contact page, /about-us, etc.)
+      if (!result.phone && result.website) {
+        try {
+          const pageRes = await fetch(`/api/fetch-page?url=${encodeURIComponent(result.website)}`)
+          if (pageRes.ok) {
+            const { phone } = await pageRes.json()
+            if (phone) result.phone = phone
+          }
+        } catch {}
+      }
+
+      // 4. Scan the initial Brave web snippets
       if (!result.phone) {
         for (const r of webResults) {
           const text  = `${r.title ?? ''} ${r.description ?? ''}`
@@ -152,23 +176,22 @@ export async function enrichFromBrave(venue, fields) {
         }
       }
 
-      // 4. Targeted Brave phone search — query adds "phone number" to get tel-rich results
+      // 5. Targeted phone search — appending "phone number" biases Brave toward
+      //    business-listing results that put the number directly in the snippet
       if (!result.phone && !braveLimitReached()) {
         const phoneQ = `"${venue.name}" ${[venue.city, venue.state].filter(Boolean).join(' ')} phone number`
         increment()
         try {
           const phoneRes = await fetch(`/api/search?q=${encodeURIComponent(phoneQ)}&count=5`)
           if (phoneRes.ok) {
-            const phoneData   = await phoneRes.json()
-            const phoneInbox  = phoneData.infobox?.results?.[0]
-            // Check infobox attributes of the phone-focused query
+            const phoneData  = await phoneRes.json()
+            const phoneInbox = phoneData.infobox?.results?.[0]
             const attr = phoneInbox?.attributes?.find(a =>
               /phone|telephone|contact/i.test(a.name ?? a.label ?? '')
             )
             if (attr?.value) {
               result.phone = attr.value
             } else {
-              // Scan all result snippets from the phone-targeted search
               const phoneResults = phoneData.web?.results ?? []
               for (const r of phoneResults) {
                 const text  = `${r.title ?? ''} ${r.description ?? ''}`
