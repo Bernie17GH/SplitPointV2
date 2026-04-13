@@ -15,7 +15,7 @@ const STATUS_STYLE = {
 
 // ─── Stop card ────────────────────────────────────────────────────────────────
 
-function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
+function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaults = {} }) {
   const [expanded, setExpanded] = useState(false)
   const venue    = stop.venues
   const hasDates = stop.arrival_date && stop.departure_date
@@ -84,12 +84,27 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
             <p className="text-xs text-gray-500">Drive from previous: <span className="font-medium">{stop.travel_hours_from_prev}h</span></p>
           )}
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <p className="text-xs text-gray-500">Show time: <span className="font-medium">{formatHour(stop.show_start_hour) ?? '(tour default)'}</span></p>
-            <p className="text-xs text-gray-500">Duration: <span className="font-medium">{stop.show_duration_hours != null ? `${stop.show_duration_hours}h` : '(tour default)'}</span></p>
-            <p className="text-xs text-gray-500">Setup: <span className="font-medium">{stop.production_setup_hours != null ? `${stop.production_setup_hours}h` : '(tour default)'}</span></p>
-            <p className="text-xs text-gray-500">Breakdown: <span className="font-medium">{stop.breakdown_hours != null ? `${stop.breakdown_hours}h` : '(tour default)'}</span></p>
-            {(stop.rest_days ?? 0) > 0 && (
-              <p className="text-xs text-gray-500 col-span-2">Rest days: <span className="font-medium">{stop.rest_days}</span></p>
+            {(() => {
+              const def = tourDefaults
+              const rows = [
+                { label: 'Show time',  val: stop.show_start_hour    != null ? formatHour(stop.show_start_hour)                  : formatHour(def.show_start_hour),                  isDefault: stop.show_start_hour    == null },
+                { label: 'Duration',   val: stop.show_duration_hours != null ? `${stop.show_duration_hours}h`                  : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
+                { label: 'Setup',      val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
+                { label: 'Breakdown',  val: stop.breakdown_hours    != null ? `${stop.breakdown_hours}h`                      : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
+              ]
+              return rows.map(({ label, val, isDefault }) => (
+                <p key={label} className="text-xs text-gray-500">
+                  {label}:{' '}
+                  <span className="font-medium">{val ?? '—'}</span>
+                  {isDefault && val && <span className="text-gray-300 ml-1">default</span>}
+                </p>
+              ))
+            })()}
+            {(stop.rest_days ?? tourDefaults.rest_days ?? 0) > 0 && (
+              <p className="text-xs text-gray-500 col-span-2">
+                Rest days: <span className="font-medium">{stop.rest_days ?? tourDefaults.rest_days}</span>
+                {stop.rest_days == null && <span className="text-gray-300 ml-1">default</span>}
+              </p>
             )}
           </div>
           {venue?.address && <p className="text-xs text-gray-500">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>}
@@ -112,6 +127,159 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
         </div>
       )}
     </div>
+  )
+}
+
+// ─── Edit Tour sheet ──────────────────────────────────────────────────────────
+
+const STATUSES = ['draft', 'active', 'completed', 'cancelled']
+
+function EditTourSheet({ open, onClose, tour, onSaved }) {
+  const [form, setForm]     = useState({})
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
+
+  useEffect(() => {
+    if (open && tour) {
+      setForm({
+        name:                        tour.name                        ?? '',
+        status:                      tour.status                      ?? 'draft',
+        start_date:                  tour.start_date                  ?? '',
+        end_date:                    tour.end_date                    ?? '',
+        is_end_date_fixed:           tour.is_end_date_fixed           ?? false,
+        default_show_start_hour:     tour.default_show_start_hour     ?? 20,
+        default_show_duration_hours: tour.default_show_duration_hours ?? 2,
+        default_production_setup_hours: tour.default_production_setup_hours ?? 4,
+        default_breakdown_hours:     tour.default_breakdown_hours     ?? 2,
+        default_rest_days:           tour.default_rest_days           ?? 0,
+      })
+      setError('')
+    }
+  }, [open, tour])
+
+  function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError('Tour name is required.'); return }
+    setSaving(true); setError('')
+    try {
+      const { error: err } = await supabase.from('tours').update({
+        name:                           form.name.trim(),
+        status:                         form.status,
+        start_date:                     form.start_date                  || null,
+        end_date:                       form.end_date                    || null,
+        is_end_date_fixed:              form.is_end_date_fixed,
+        default_show_start_hour:        form.default_show_start_hour,
+        default_show_duration_hours:    form.default_show_duration_hours,
+        default_production_setup_hours: form.default_production_setup_hours,
+        default_breakdown_hours:        form.default_breakdown_hours,
+        default_rest_days:              form.default_rest_days,
+      }).eq('id', tour.id)
+      if (err) throw err
+      onSaved()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+
+  return (
+    <BottomSheet open={open} onClose={onClose} title="Edit Tour">
+      <div className="space-y-4">
+
+        {/* Name */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Tour Name *</label>
+          <input value={form.name} onChange={e => set('name', e.target.value)} className={inputCls} />
+        </div>
+
+        {/* Status */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-2">Status</label>
+          <div className="grid grid-cols-4 gap-1 bg-gray-100 rounded-xl p-1">
+            {STATUSES.map(s => (
+              <button key={s} onClick={() => set('status', s)}
+                className={`rounded-lg text-xs font-medium py-1.5 capitalize transition-colors ${
+                  form.status === s ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Start Date</label>
+            <input type="date" value={form.start_date ?? ''} onChange={e => set('start_date', e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">End Date</label>
+            <input type="date" value={form.end_date ?? ''} onChange={e => set('end_date', e.target.value)} className={inputCls} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between py-1 border-t border-gray-50">
+          <div>
+            <p className="text-sm font-medium text-gray-900">End date is fixed</p>
+            <p className="text-xs text-gray-400">Routing will solve for start date</p>
+          </div>
+          <button onClick={() => set('is_end_date_fixed', !form.is_end_date_fixed)}
+            className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.is_end_date_fixed ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+            <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-0.5 ${form.is_end_date_fixed ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+
+        {/* Show defaults */}
+        <div className="border-t border-gray-50 pt-3 space-y-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Show Defaults</p>
+          <p className="text-xs text-gray-400">Applies to every stop unless overridden per stop.</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Show Start Time</label>
+              <input type="time" step="1800"
+                value={form.default_show_start_hour != null ? hourToTimeStr(form.default_show_start_hour) : ''}
+                onChange={e => set('default_show_start_hour', e.target.value ? timeStrToHour(e.target.value) : null)}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
+              <input type="number" min="0.5" max="6" step="0.5" value={form.default_show_duration_hours ?? ''}
+                onChange={e => set('default_show_duration_hours', parseFloat(e.target.value) || 2)}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+              <input type="number" min="0.5" max="12" step="0.5" value={form.default_production_setup_hours ?? ''}
+                onChange={e => set('default_production_setup_hours', parseFloat(e.target.value) || 4)}
+                className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+              <input type="number" min="0.5" max="6" step="0.5" value={form.default_breakdown_hours ?? ''}
+                onChange={e => set('default_breakdown_hours', parseFloat(e.target.value) || 2)}
+                className={inputCls} />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-500 mb-1">Rest Days per venue</label>
+              <input type="number" min="0" max="14" value={form.default_rest_days ?? 0}
+                onChange={e => set('default_rest_days', parseInt(e.target.value) || 0)}
+                className={inputCls} />
+            </div>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
+
+        <button onClick={handleSave} disabled={saving}
+          className="w-full rounded-xl bg-indigo-600 text-white text-sm font-semibold py-2.5 hover:bg-indigo-700 transition-colors disabled:opacity-60">
+          {saving ? 'Saving…' : 'Save Changes'}
+        </button>
+      </div>
+    </BottomSheet>
   )
 }
 
@@ -490,8 +658,9 @@ export default function TourDetail() {
   const [stops, setStops]       = useState([])
   const [legs, setLegs]         = useState([])
   const [view, setView]         = useState('list') // 'list' | 'map'
-  const [addingStop, setAddingStop] = useState(false)
-  const [optimizing, setOptimizing] = useState(false)
+  const [addingStop, setAddingStop]   = useState(false)
+  const [editingTour, setEditingTour] = useState(false)
+  const [optimizing, setOptimizing]   = useState(false)
   const [optError, setOptError] = useState('')
   const [loading, setLoading]   = useState(true)
 
@@ -513,7 +682,14 @@ export default function TourDetail() {
 
   useEffect(() => { loadTour() }, [loadTour])
 
-  const headliner = tour?.tour_artists?.find(a => a.role === 'Headliner')
+  const headliner    = tour?.tour_artists?.find(a => a.role === 'Headliner')
+  const tourDefaults = {
+    show_start_hour:        tour?.default_show_start_hour,
+    show_duration_hours:    tour?.default_show_duration_hours,
+    production_setup_hours: tour?.default_production_setup_hours,
+    breakdown_hours:        tour?.default_breakdown_hours,
+    rest_days:              tour?.default_rest_days,
+  }
 
   const mapStops = useMemo(() =>
     stops
@@ -664,9 +840,17 @@ export default function TourDetail() {
               </p>
             )}
           </div>
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize shrink-0 ${STATUS_STYLE[tour.status] ?? STATUS_STYLE.draft}`}>
-            {tour.status}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${STATUS_STYLE[tour.status] ?? STATUS_STYLE.draft}`}>
+              {tour.status}
+            </span>
+            <button
+              onClick={() => setEditingTour(true)}
+              className="text-xs text-indigo-600 font-medium hover:text-indigo-700 px-2 py-0.5 rounded-lg hover:bg-indigo-50 transition-colors"
+            >
+              Edit
+            </button>
+          </div>
         </div>
       </div>
 
@@ -757,7 +941,7 @@ export default function TourDetail() {
               </div>
             ) : (
               stops.map((stop, i) => (
-                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} />
+                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} tourDefaults={tourDefaults} />
               ))
             )}
           </div>
@@ -803,6 +987,13 @@ export default function TourDetail() {
           )}
         </div>
       </div>
+
+      <EditTourSheet
+        open={editingTour}
+        onClose={() => setEditingTour(false)}
+        tour={tour}
+        onSaved={() => { setEditingTour(false); loadTour() }}
+      />
 
       <AddStopSheet
         open={addingStop}
