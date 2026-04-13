@@ -1085,13 +1085,15 @@ export default function TourDetail() {
   }, [compliance])
 
   async function handleSwitchToTwoDriver(stopId) {
-    await supabase.from('tour_stops').update({ requires_two_driver: true }).eq('id', stopId)
-    loadTour()
+    const { error } = await supabase.from('tour_stops').update({ requires_two_driver: true }).eq('id', stopId)
+    if (error) { setOptError(`Could not set 2-driver: ${error.message}`); return }
+    await loadTour()
   }
 
   async function handleClearTwoDriver(stopId) {
-    await supabase.from('tour_stops').update({ requires_two_driver: false }).eq('id', stopId)
-    loadTour()
+    const { error } = await supabase.from('tour_stops').update({ requires_two_driver: false }).eq('id', stopId)
+    if (error) { setOptError(`Could not clear 2-driver: ${error.message}`); return }
+    await loadTour()
   }
 
   async function handleAddRestStop(afterStopIndex) {
