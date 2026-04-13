@@ -258,7 +258,7 @@ function NewTourSheet({ open, onClose, onCreated, artists }) {
                   className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Production Setup (hrs)</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Load-in (hrs)</label>
                 <input type="number" min="0.5" max="12" step="0.5"
                   value={form.default_production_setup_hours}
                   onChange={e => set('default_production_setup_hours', parseFloat(e.target.value) || 4)}
@@ -266,7 +266,7 @@ function NewTourSheet({ open, onClose, onCreated, artists }) {
                 <p className="text-xs text-gray-400 mt-1">Before show start</p>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Breakdown (hrs)</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Load-out (hrs)</label>
                 <input type="number" min="0.5" max="6" step="0.5"
                   value={form.default_breakdown_hours}
                   onChange={e => set('default_breakdown_hours', parseFloat(e.target.value) || 2)}

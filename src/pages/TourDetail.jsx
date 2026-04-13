@@ -251,13 +251,13 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, 
                   onChange={v => setForm(f => ({ ...f, show_duration_hours: v }))}
                   onReset={() => setForm(f => ({ ...f, show_duration_hours: null }))}
                 />
-                <TimingRow label="Setup"
+                <TimingRow label="Load-in"
                   value={form.production_setup_hours}
                   defaultVal={def.production_setup_hours ?? 4}
                   onChange={v => setForm(f => ({ ...f, production_setup_hours: v }))}
                   onReset={() => setForm(f => ({ ...f, production_setup_hours: null }))}
                 />
-                <TimingRow label="Breakdown"
+                <TimingRow label="Load-out"
                   value={form.breakdown_hours}
                   defaultVal={def.breakdown_hours ?? 2}
                   onChange={v => setForm(f => ({ ...f, breakdown_hours: v }))}
@@ -277,8 +277,8 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, 
                 {[
                   { label: 'Show time', val: stop.show_start_hour        != null ? formatHour(stop.show_start_hour)              : formatHour(def.show_start_hour),                                    isDefault: stop.show_start_hour        == null },
                   { label: 'Duration',  val: stop.show_duration_hours    != null ? `${stop.show_duration_hours}h`                : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
-                  { label: 'Setup',     val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
-                  { label: 'Breakdown', val: stop.breakdown_hours        != null ? `${stop.breakdown_hours}h`                    : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
+                  { label: 'Load-in',   val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
+                  { label: 'Load-out',  val: stop.breakdown_hours        != null ? `${stop.breakdown_hours}h`                    : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
                 ].map(({ label, val, isDefault }) => (
                   <p key={label} className="text-xs text-gray-500">
                     {label}: <span className="font-medium">{val ?? '—'}</span>
@@ -386,13 +386,13 @@ function ScheduleView({ stops, tourDefaults: def }) {
               <div className="px-4 py-3 divide-y divide-gray-50">
                 <div className="pb-2 space-y-0.5">
                   <ScheduleRow label="Arrives"    value={formatArrivalTime(stop.arrival_date)} />
-                  <ScheduleRow label="Setup by"   value={formatHour(setupDeadline)} sub={`${setupHours}h needed`} />
+                  <ScheduleRow label="Load-in by" value={formatHour(setupDeadline)} sub={`${setupHours}h needed`} />
                 </div>
                 <div className="py-2">
                   <ScheduleRow label="Show"       value={`${formatHour(showStart)} – ${formatHour(showEnd)}`} sub={`${showDuration}h`} accent />
                 </div>
                 <div className="pt-2 space-y-0.5">
-                  <ScheduleRow label="Breakdown"  value={`${breakdownHours}h`} />
+                  <ScheduleRow label="Load-out"   value={`${breakdownHours}h`} />
                   <ScheduleRow label="Departs"    value={formatArrivalTime(stop.departure_date)} />
                 </div>
               </div>
@@ -558,13 +558,13 @@ function EditTourSheet({ open, onClose, tour, onSaved, hardErrorCount = 0 }) {
                 className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+              <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
               <input type="number" min="0.5" max="12" step="0.5" value={form.default_production_setup_hours ?? ''}
                 onChange={e => set('default_production_setup_hours', parseFloat(e.target.value) || 4)}
                 className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+              <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
               <input type="number" min="0.5" max="6" step="0.5" value={form.default_breakdown_hours ?? ''}
                 onChange={e => set('default_breakdown_hours', parseFloat(e.target.value) || 2)}
                 className={inputCls} />
@@ -891,13 +891,13 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                   placeholder="Tour default" className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+                <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
                 <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
                   onChange={e => setSO('production_setup_hours', e.target.value)}
                   placeholder="Tour default" className={inputCls} />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+                <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
                 <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
                   onChange={e => setSO('breakdown_hours', e.target.value)}
                   placeholder="Tour default" className={inputCls} />
@@ -967,13 +967,13 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                     placeholder="Tour default" className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Production Setup (hrs)</label>
+                  <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
                   <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
                     onChange={e => setSO('production_setup_hours', e.target.value)}
                     placeholder="Tour default" className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Breakdown (hrs)</label>
+                  <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
                   <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
                     onChange={e => setSO('breakdown_hours', e.target.value)}
                     placeholder="Tour default" className={inputCls} />
