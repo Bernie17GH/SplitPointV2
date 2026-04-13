@@ -36,6 +36,11 @@ export function braveLimitReached() {
   return getBraveUsageThisMonth() >= MONTHLY_LIMIT
 }
 
+/** Queries remaining this calendar month (never negative). */
+export function getBraveQueriesRemaining() {
+  return Math.max(0, MONTHLY_LIMIT - getBraveUsageThisMonth())
+}
+
 function increment() {
   const month = currentMonth()
   const u     = readUsage()

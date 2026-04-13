@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase'
 import { enrichFromHERE }  from '../services/here'
 import { enrichFromOSM }   from '../services/osm'
 import { enrichFromDDG }   from '../services/ddg'
-import { enrichFromBrave, getBraveUsageThisMonth, braveLimitReached } from '../services/brave'
+import { enrichFromBrave, getBraveUsageThisMonth, getBraveQueriesRemaining, braveLimitReached } from '../services/brave'
 
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
@@ -525,6 +525,7 @@ function VenueCleanupSection() {
   const [results, setResults]             = useState([])
   const [applying, setApplying]           = useState(false)
   const [toast, setToast]                 = useState('')
+  const [braveUsage, setBraveUsage]       = useState(() => getBraveUsageThisMonth())
 
   useEffect(() => {
     supabase.from('venues')
@@ -659,6 +660,7 @@ function VenueCleanupSection() {
       }
       newResults.push({ venue, found, accepted, error })
       setProgress(p => ({ ...p, done: p.done + 1 }))
+      setBraveUsage(getBraveUsageThisMonth())
       await new Promise(r => setTimeout(r, 150))
     }
     setResults(newResults)
@@ -882,13 +884,45 @@ function VenueCleanupSection() {
       </div>
 
       {/* Brave usage indicator */}
-      <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
-        <span>Brave web search</span>
-        <span className={getBraveUsageThisMonth() >= 2000 ? 'text-red-500 font-medium' : ''}>
-          {getBraveUsageThisMonth()} / 2,000 this month
-          {braveLimitReached() ? ' — limit reached' : ''}
-        </span>
-      </div>
+      {(() => {
+        const used      = braveUsage
+        const remaining = Math.max(0, 2000 - used)
+        const pct       = Math.round((used / 2000) * 100)
+        // Worst-case queries per venue: phone selected = 3, website only = 1, neither = 0
+        const qPerVenue = enrichFields.has('phone') ? 3 : enrichFields.has('website') ? 1 : 0
+        const venuesLeft = qPerVenue > 0 ? Math.floor(remaining / qPerVenue) : null
+        const needed     = checkedIds.size * qPerVenue
+        const notEnough  = qPerVenue > 0 && needed > remaining
+
+        const barColor   = used >= 1900 ? 'bg-red-500' : used >= 1600 ? 'bg-amber-400' : 'bg-indigo-500'
+        const countColor = used >= 1900 ? 'text-red-500 font-semibold' : used >= 1600 ? 'text-amber-500 font-medium' : 'text-gray-500'
+
+        return (
+          <div className="mb-3 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500 font-medium">Brave web search</span>
+              <span className={countColor}>
+                {used.toLocaleString()} / 2,000 used this month
+              </span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5">
+              <div className={`h-1.5 rounded-full transition-all ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+            <div className="flex items-center justify-between text-xs text-gray-400">
+              <span>
+                {remaining.toLocaleString()} queries remaining
+                {venuesLeft !== null && ` · ~${venuesLeft} venues at current settings`}
+              </span>
+              {notEnough && (
+                <span className="text-amber-500 font-medium">⚠ May not cover all {checkedIds.size} selected</span>
+              )}
+              {used >= 2000 && (
+                <span className="text-red-500 font-medium">Limit reached</span>
+              )}
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Action */}
       <button
