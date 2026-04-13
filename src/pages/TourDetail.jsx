@@ -1461,7 +1461,7 @@ export default function TourDetail() {
                     {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} onClearTwoDriver={() => handleClearTwoDriver(stop.id)} />}
                     {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                       <ComplianceWarningBanner key={wi} warning={w}
-                        onSwitchToTwoDriver={handleSwitchToTwoDriver}
+                        onSwitchToTwoDriver={() => handleSwitchToTwoDriver(w.stopId)}
                         onAddRestStop={() => handleAddRestStop(w.stopIndex - 1)} />
                     ))}
                     <StopCard stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
