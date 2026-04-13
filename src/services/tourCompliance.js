@@ -78,8 +78,9 @@ export function checkTourCompliance(stops, tour) {
     const nextCity   = stop.venues?.city  ?? '?'
 
     // ── FMCSA drive-time checks ───────────────────────────────────────────────
-    // Skip if tour is running a 2-driver team OR this specific leg is flagged for 2 drivers
-    if (driveHours != null && driverCount === 1 && !stop.requires_two_driver) {
+    // Skip if: tour is 2-driver, this leg is flagged for 2 drivers,
+    // OR the previous stop is a transit rest (drive is already split across days)
+    if (driveHours != null && driverCount === 1 && !stop.requires_two_driver && prev.stop_type !== 'transit_rest') {
       if (driveHours > FMCSA_MAX_DRIVE) {
         warnings.push({
           type:          'FMCSA_DRIVE_LIMIT',

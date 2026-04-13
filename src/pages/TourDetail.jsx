@@ -1118,9 +1118,13 @@ export default function TourDetail() {
   }
 
   async function handleOptimize() {
-    if (stops.length < 2) { setOptError('Add at least 2 stops to optimize.'); return }
+    // Transit rest stops have no venue/coordinates — separate them before routing
+    const showStops = stops.filter(s => s.stop_type !== 'transit_rest')
+    const restStops = stops.filter(s => s.stop_type === 'transit_rest')
 
-    const missing = stops.filter(s => !s.venues?.lat || !s.venues?.lng)
+    if (showStops.length < 2) { setOptError('Add at least 2 show stops to optimize.'); return }
+
+    const missing = showStops.filter(s => !s.venues?.lat || !s.venues?.lng)
     if (missing.length > 0) {
       setOptError(`${missing.length} stop(s) are missing coordinates. Try removing and re-adding them.`)
       return
@@ -1128,36 +1132,57 @@ export default function TourDetail() {
 
     setOptimizing(true); setOptError('')
     try {
-      // Respect designated start/end anchors
-      const startStop = stops.find(s => s.is_start_stop)
-      const endStop   = stops.find(s => s.is_end_stop)
-      const middle    = stops.filter(s => s !== startStop && s !== endStop)
+      // Respect designated start/end anchors (show stops only)
+      const startStop     = showStops.find(s => s.is_start_stop)
+      const endStop       = showStops.find(s => s.is_end_stop)
+      const middle        = showStops.filter(s => s !== startStop && s !== endStop)
       const orderedForOpt = [
         ...(startStop ? [startStop] : []),
         ...middle,
-        ...(endStop ? [endStop] : []),
+        ...(endStop   ? [endStop]   : []),
       ]
-      // If no designated start, use existing order as-is
-      const stopsToOpt = orderedForOpt.length > 0 ? orderedForOpt : stops
+      const stopsToOpt = orderedForOpt.length > 0 ? orderedForOpt : showStops
 
       const waypoints = stopsToOpt.map(s => ({
-        id: s.id,
-        lat: s.venues.lat,
-        lng: s.venues.lng,
-        name: s.venues.name,
-        city: s.venues.city,
-        state: s.venues.state,
+        id: s.id, lat: s.venues.lat, lng: s.venues.lng,
+        name: s.venues.name, city: s.venues.city, state: s.venues.state,
       }))
 
       const { orderedStops, legs: newLegs } = await optimizeRoute(waypoints, { fixedEnd: !!endStop })
-      setLegs(newLegs)
+      setLegs(newLegs) // map uses show-to-show legs only
 
-      // Map optimized waypoints back to full stop objects so rest_days/buffer_days are preserved
-      const orderedFullStops = orderedStops.map(ws => stops.find(s => s.id === ws.id))
+      // Map optimised waypoints back to full stop objects
+      const orderedShowFull = orderedStops.map(ws => stops.find(s => s.id === ws.id))
 
-      // Apply tour date math — guard against null tour defaults
+      // Re-splice transit rest stops: each goes after the same show stop it originally followed
+      const sortedAll = [...stops].sort((a, b) => a.sequence_order - b.sequence_order)
+      const restAfterShowId = {}
+      sortedAll.forEach((s, i) => {
+        if (s.stop_type === 'transit_rest') {
+          const prevShow = sortedAll.slice(0, i).reverse().find(p => p.stop_type !== 'transit_rest')
+          if (prevShow) restAfterShowId[s.id] = prevShow.id
+        }
+      })
+      const orderedFull = []
+      orderedShowFull.forEach(showStop => {
+        orderedFull.push(showStop)
+        restStops.filter(r => restAfterShowId[r.id] === showStop.id).forEach(r => orderedFull.push(r))
+      })
+
+      // Build a legs array for the full list (transit rest stops get zero-drive entries;
+      // the show stop after a rest stop carries the full A→B leg drive time)
+      let showLegIdx = 0
+      const fullLegs = orderedFull.map((stop, i) => {
+        if (i === 0) return null
+        if (stop.stop_type === 'transit_rest') {
+          return { durationHours: 0, distanceMiles: 0, encodedPolyline: null }
+        }
+        return newLegs[showLegIdx++] ?? null
+      })
+
+      // Apply tour date math using fullLegs so rest days shift dates correctly
       const dated = computeTourDates(
-        orderedFullStops,
+        orderedFull,
         tour.start_date ?? new Date().toISOString().split('T')[0],
         {
           defaultRestDays:             tour.default_rest_days              ?? 0,
@@ -1166,24 +1191,27 @@ export default function TourDetail() {
           defaultProductionSetupHours: tour.default_production_setup_hours ?? 4,
           defaultBreakdownHours:       tour.default_breakdown_hours        ?? 2,
         },
-        newLegs
+        fullLegs
       )
 
       // Batch all stop updates + tour counter in two parallel calls
-      const stopUpdates = orderedFullStops.map((stop, i) => ({
-        id:                          stop.id,
-        tour_id:                     stop.tour_id,
-        venue_id:                    stop.venue_id,
-        sequence_order:              i,
-        arrival_date:                dated[i].arrival_date,
-        departure_date:              dated[i].departure_date,
-        travel_hours_from_prev:      i > 0 ? newLegs[i - 1]?.durationHours   ?? null : null,
-        estimated_drive_hours:       i > 0 ? newLegs[i - 1]?.durationHours   ?? null : null,
-        distance_miles_from_prev:    i > 0 ? newLegs[i - 1]?.distanceMiles   ?? null : null,
-        encoded_polyline_from_prev:  i > 0 ? newLegs[i - 1]?.encodedPolyline ?? null : null,
-        stop_type:                   stop.stop_type ?? 'show',
-        requires_two_driver:         false, // reset on every optimize — re-evaluate compliance fresh
-      }))
+      const stopUpdates = orderedFull.map((stop, i) => {
+        const leg = fullLegs[i]
+        return {
+          id:                          stop.id,
+          tour_id:                     stop.tour_id,
+          venue_id:                    stop.venue_id,
+          sequence_order:              i,
+          arrival_date:                dated[i].arrival_date,
+          departure_date:              dated[i].departure_date,
+          travel_hours_from_prev:      leg?.durationHours   ?? null,
+          estimated_drive_hours:       leg?.durationHours   ?? null,
+          distance_miles_from_prev:    leg?.distanceMiles   ?? null,
+          encoded_polyline_from_prev:  leg?.encodedPolyline ?? null,
+          stop_type:                   stop.stop_type ?? 'show',
+          requires_two_driver:         false, // reset — re-evaluate compliance fresh after each optimize
+        }
+      })
 
       const [stopsResult, tourResult] = await Promise.all([
         supabase.from('tour_stops').upsert(stopUpdates),
