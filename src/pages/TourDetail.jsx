@@ -341,14 +341,60 @@ function ScheduleRow({ label, value, sub, accent }) {
   )
 }
 
-function ScheduleView({ stops, tourDefaults: def }) {
+function ScheduleView({ stops, tourDefaults: def, tour }) {
   if (!stops.length) return (
     <p className="text-sm text-gray-400 text-center py-12">No stops yet — add stops and optimize to see the schedule.</p>
   )
 
+  const twoDriverTour = tour?.driver_count === 2
+
   return (
     <div className="pb-24 max-w-xl mx-auto">
       {stops.map((stop, i) => {
+        const nextStop       = stops[i + 1]
+        const travelNext      = nextStop?.travel_hours_from_prev
+        const travelNextMiles = nextStop?.distance_miles_from_prev
+        const nextIsRest      = nextStop?.stop_type === 'transit_rest'
+        const needs2Driver    = nextStop?.requires_two_driver || (twoDriverTour && travelNext > 8)
+
+        // ── Transit rest stop — minimal "Rest Day" card ───────────────────────
+        if (stop.stop_type === 'transit_rest') {
+          return (
+            <div key={stop.id}>
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 overflow-hidden">
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <div className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold bg-gray-300 text-white shrink-0">
+                    {i + 1}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-600 text-sm">Rest Day</p>
+                    <p className="text-xs text-gray-400">
+                      {stop.arrival_date ? formatArrivalTime(stop.arrival_date) : 'Date TBD'} · Transit rest
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Connector after rest stop — shows drive to next show */}
+              {i < stops.length - 1 && (
+                <div className="flex items-center gap-3 px-6 py-1">
+                  <div className="flex flex-col items-center gap-0.5 shrink-0">
+                    <div className="w-px h-3 bg-gray-200" />
+                    <div className="text-gray-300 text-xs">↓</div>
+                    <div className="w-px h-3 bg-gray-200" />
+                  </div>
+                  <p className="text-xs text-gray-400 font-medium">
+                    {travelNext != null && travelNext > 0
+                      ? formatTravel(travelNext, travelNextMiles)
+                      : 'Continue to next stop'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )
+        }
+
+        // ── Regular show stop ─────────────────────────────────────────────────
         const venue          = stop.venues
         const showStart      = stop.show_start_hour          ?? def.show_start_hour        ?? 20
         const showDuration   = stop.show_duration_hours      ?? def.show_duration_hours    ?? 2
@@ -356,8 +402,6 @@ function ScheduleView({ stops, tourDefaults: def }) {
         const breakdownHours = stop.breakdown_hours          ?? def.breakdown_hours        ?? 2
         const showEnd        = (showStart + showDuration) % 24
         const setupDeadline  = showStart - setupHours
-        const travelNext      = stops[i + 1]?.travel_hours_from_prev
-        const travelNextMiles = stops[i + 1]?.distance_miles_from_prev
         const isStart        = stop.is_start_stop
         const isEnd          = stop.is_end_stop
 
@@ -398,17 +442,36 @@ function ScheduleView({ stops, tourDefaults: def }) {
               </div>
             </div>
 
-            {/* Travel connector to next stop */}
-            {i < stops.length - 1 && (
+            {/* Travel connector to next stop — suppressed before a rest day (drive shown after) */}
+            {i < stops.length - 1 && !nextIsRest && (
               <div className="flex items-center gap-3 px-6 py-1">
                 <div className="flex flex-col items-center gap-0.5 shrink-0">
                   <div className="w-px h-3 bg-gray-200" />
                   <div className="text-gray-300 text-xs">↓</div>
                   <div className="w-px h-3 bg-gray-200" />
                 </div>
-                <p className="text-xs text-gray-400 font-medium">
-                  {travelNext != null ? formatTravel(travelNext, travelNextMiles) : 'Optimize to calculate drive time'}
-                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-xs text-gray-400 font-medium">
+                    {travelNext != null ? formatTravel(travelNext, travelNextMiles) : 'Optimize to calculate drive time'}
+                  </p>
+                  {needs2Driver && (
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                      2-Driver Leg
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Rest day divider — shown between show and the rest stop that follows */}
+            {i < stops.length - 1 && nextIsRest && (
+              <div className="flex items-center gap-3 px-6 py-1">
+                <div className="flex flex-col items-center gap-0.5 shrink-0">
+                  <div className="w-px h-3 bg-gray-200" />
+                  <div className="text-gray-300 text-xs">↓</div>
+                  <div className="w-px h-3 bg-gray-200" />
+                </div>
+                <p className="text-xs text-gray-400 font-medium">Rest day follows</p>
               </div>
             )}
           </div>
@@ -1434,7 +1497,7 @@ export default function TourDetail() {
         )}
         {view === 'schedule' && (
           <div className="px-4">
-            <ScheduleView stops={stops} tourDefaults={tourDefaults} />
+            <ScheduleView stops={stops} tourDefaults={tourDefaults} tour={tour} />
           </div>
         )}
       </div>
@@ -1442,7 +1505,7 @@ export default function TourDetail() {
       {/* Desktop content */}
       <div className="hidden md:block md:px-8 md:pb-10">
         {view === 'schedule' ? (
-          <ScheduleView stops={stops} tourDefaults={tourDefaults} />
+          <ScheduleView stops={stops} tourDefaults={tourDefaults} tour={tour} />
         ) : (
           <div className="grid gap-6" style={{ gridTemplateColumns: '1fr 1.4fr' }}>
             {/* Stop list */}
