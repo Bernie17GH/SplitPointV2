@@ -19,11 +19,14 @@ const STATUS_STYLE = {
 function LegConnector({ stop, twoDriver }) {
   const hours = stop.travel_hours_from_prev ?? stop.estimated_drive_hours
   if (!hours) return null
+  const miles        = stop.distance_miles_from_prev
   const needs2Driver = twoDriver && hours > 8
   return (
     <div className="flex items-center gap-2 px-4 py-1 my-1">
       <div className="w-0.5 h-4 bg-gray-200 mx-3 shrink-0" />
-      <span className="text-xs text-gray-400">{hours.toFixed(1)}h drive</span>
+      <span className="text-xs text-gray-400">
+        {hours.toFixed(1)}h drive{miles ? ` · ${miles.toFixed(0)} mi` : ''}
+      </span>
       {needs2Driver && (
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
           2-Driver Leg
@@ -306,15 +309,16 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, 
 
 // ─── Schedule view ────────────────────────────────────────────────────────────
 
-function formatTravel(h) {
+function formatTravel(h, miles) {
   if (h == null) return null
   if (h === 0) return 'Same venue — no drive'
   const totalMin = Math.round(h * 60)
   const hours    = Math.floor(totalMin / 60)
   const mins     = totalMin % 60
-  if (hours === 0) return `${mins} min drive`
-  if (mins  === 0) return `${hours}h drive`
-  return `${hours}h ${mins} min drive`
+  const time = hours === 0 ? `${mins} min drive`
+             : mins  === 0 ? `${hours}h drive`
+             : `${hours}h ${mins} min drive`
+  return miles ? `${time} · ${miles.toFixed(0)} mi` : time
 }
 
 function ScheduleRow({ label, value, sub, accent }) {
@@ -342,7 +346,8 @@ function ScheduleView({ stops, tourDefaults: def }) {
         const breakdownHours = stop.breakdown_hours          ?? def.breakdown_hours        ?? 2
         const showEnd        = (showStart + showDuration) % 24
         const setupDeadline  = showStart - setupHours
-        const travelNext     = stops[i + 1]?.travel_hours_from_prev
+        const travelNext      = stops[i + 1]?.travel_hours_from_prev
+        const travelNextMiles = stops[i + 1]?.distance_miles_from_prev
         const isStart        = stop.is_start_stop
         const isEnd          = stop.is_end_stop
 
@@ -392,7 +397,7 @@ function ScheduleView({ stops, tourDefaults: def }) {
                   <div className="w-px h-3 bg-gray-200" />
                 </div>
                 <p className="text-xs text-gray-400 font-medium">
-                  {travelNext != null ? formatTravel(travelNext) : 'Optimize to calculate drive time'}
+                  {travelNext != null ? formatTravel(travelNext, travelNextMiles) : 'Optimize to calculate drive time'}
                 </p>
               </div>
             )}
@@ -1015,7 +1020,18 @@ export default function TourDetail() {
         .order('sequence_order'),
     ])
     if (tourRes.data) setTour(tourRes.data)
-    if (stopsRes.data) setStops(stopsRes.data)
+    if (stopsRes.data) {
+      setStops(stopsRes.data)
+      // Reconstruct legs from stored per-stop data so the map renders without re-calling HERE
+      const restoredLegs = stopsRes.data
+        .slice(1)
+        .map(s => ({
+          durationHours:   s.travel_hours_from_prev ?? s.estimated_drive_hours ?? 0,
+          distanceMiles:   s.distance_miles_from_prev   ?? 0,
+          encodedPolyline: s.encoded_polyline_from_prev ?? null,
+        }))
+      if (restoredLegs.some(l => l.encodedPolyline)) setLegs(restoredLegs)
+    }
     setLoading(false)
   }, [id])
 
@@ -1140,15 +1156,17 @@ export default function TourDetail() {
 
       // Batch all stop updates + tour counter in two parallel calls
       const stopUpdates = orderedFullStops.map((stop, i) => ({
-        id:                     stop.id,
-        tour_id:                stop.tour_id,
-        venue_id:               stop.venue_id,
-        sequence_order:         i,
-        arrival_date:           dated[i].arrival_date,
-        departure_date:         dated[i].departure_date,
-        travel_hours_from_prev: i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
-        estimated_drive_hours:  i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
-        stop_type:              stop.stop_type ?? 'show',
+        id:                          stop.id,
+        tour_id:                     stop.tour_id,
+        venue_id:                    stop.venue_id,
+        sequence_order:              i,
+        arrival_date:                dated[i].arrival_date,
+        departure_date:              dated[i].departure_date,
+        travel_hours_from_prev:      i > 0 ? newLegs[i - 1]?.durationHours  ?? null : null,
+        estimated_drive_hours:       i > 0 ? newLegs[i - 1]?.durationHours  ?? null : null,
+        distance_miles_from_prev:    i > 0 ? newLegs[i - 1]?.distanceMiles  ?? null : null,
+        encoded_polyline_from_prev:  i > 0 ? newLegs[i - 1]?.encodedPolyline ?? null : null,
+        stop_type:                   stop.stop_type ?? 'show',
       }))
 
       const [stopsResult, tourResult] = await Promise.all([
