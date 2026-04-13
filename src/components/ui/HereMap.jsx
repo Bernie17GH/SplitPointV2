@@ -32,19 +32,17 @@ async function loadHereSDK() {
 }
 
 function numberedIcon(H, seq, { isFixed, isStart, isEnd } = {}) {
-  const bg = isStart ? '#22c55e' : isEnd ? '#f97316' : isFixed ? '#dc2626' : '#4f46e5'
-  const label = String(seq)
-  const fontSize = label.length > 1 ? '10' : '12'
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="38">
-      <path d="M16 0C9 0 3 6 3 13c0 9 13 25 13 25s13-16 13-25C29 6 23 0 16 0z"
-            fill="${bg}" stroke="white" stroke-width="1.5"/>
-      <text x="16" y="16" text-anchor="middle" dominant-baseline="middle"
-            fill="white" font-size="${fontSize}" font-family="sans-serif" font-weight="700">
-        ${label}
-      </text>
-    </svg>`
-  return new H.map.Icon(svg, { size: { w: 32, h: 38 }, anchor: { x: 16, y: 38 } })
+  const bg        = isStart ? '#22c55e' : isEnd ? '#f97316' : isFixed ? '#dc2626' : '#4f46e5'
+  const label     = String(seq)
+  const fontSize  = label.length > 1 ? 10 : 12
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="38">',
+    `<path d="M16 0C9 0 3 6 3 13c0 9 13 25 13 25s13-16 13-25C29 6 23 0 16 0z" fill="${bg}" stroke="white" stroke-width="1.5"/>`,
+    `<text x="16" y="16" text-anchor="middle" dominant-baseline="middle" fill="white" font-size="${fontSize}" font-family="sans-serif" font-weight="bold">${label}</text>`,
+    '</svg>',
+  ].join('')
+  const uri = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg)
+  return new H.map.Icon(uri, { size: { w: 32, h: 38 }, anchor: { x: 16, y: 38 } })
 }
 
 /**
