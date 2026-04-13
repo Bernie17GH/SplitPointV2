@@ -106,9 +106,9 @@ function nearestNeighborTSP(pool, from) {
 /**
  * Optimize the order of tour stops using nearest-neighbor TSP + HERE Routing API v8.
  *
- * First stop = fixed origin, last stop = fixed destination.
- * All middle stops are reordered client-side via TSP heuristic, then sent to HERE
- * in that order so the leg data matches the displayed sequence.
+ * options.fixedEnd = true  → the last stop in `stops` is kept as the fixed destination;
+ *                            TSP only reorders the middle stops.
+ * options.fixedEnd = false → first stop is fixed as origin; TSP picks the best endpoint.
  *
  * stops: [{ id, lat, lng, name, city, state }]
  *
@@ -116,16 +116,22 @@ function nearestNeighborTSP(pool, from) {
  *   orderedStops — stops in optimized sequence
  *   legs         — [{ durationHours, distanceMiles, encodedPolyline }] per leg
  */
-export async function optimizeRoute(stops) {
+export async function optimizeRoute(stops, { fixedEnd = false } = {}) {
   if (stops.length < 2) return { orderedStops: stops, legs: [] }
 
   const [first, ...rest] = stops
 
-  // TSP over ALL non-first stops — endpoint is determined by the heuristic,
-  // not pre-fixed to whatever stop was added last.
-  const tspOrdered = rest.length > 1
-    ? nearestNeighborTSP(rest, first)
-    : rest
+  let tspOrdered
+  if (fixedEnd && rest.length > 1) {
+    // Last stop in `rest` is the designated end — TSP only reorders the middle
+    const middle = rest.slice(0, -1)
+    const last   = rest[rest.length - 1]
+    const reordered = middle.length > 1 ? nearestNeighborTSP(middle, first) : middle
+    tspOrdered = [...reordered, last]
+  } else {
+    // TSP over ALL non-first stops — endpoint determined by heuristic
+    tspOrdered = rest.length > 1 ? nearestNeighborTSP(rest, first) : rest
+  }
 
   const orderedStops = [first, ...tspOrdered]
   const destination  = tspOrdered[tspOrdered.length - 1]

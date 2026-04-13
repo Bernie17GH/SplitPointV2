@@ -15,28 +15,42 @@ const STATUS_STYLE = {
 
 // ─── Stop card ────────────────────────────────────────────────────────────────
 
-function StopCard({ stop, seq, onPin, onRemove }) {
+function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
   const [expanded, setExpanded] = useState(false)
-  const venue = stop.venues
+  const venue    = stop.venues
   const hasDates = stop.arrival_date && stop.departure_date
+  const isStart  = stop.is_start_stop
+  const isEnd    = stop.is_end_stop
+
+  const borderCls = isStart ? 'border-green-300'
+    : isEnd               ? 'border-orange-300'
+    : stop.is_fixed       ? 'border-red-200'
+    : 'border-gray-100'
+
+  const dotCls = isStart ? 'bg-green-500'
+    : isEnd             ? 'bg-orange-400'
+    : stop.is_fixed     ? 'bg-red-500'
+    : 'bg-indigo-600'
 
   return (
-    <div className={`rounded-2xl border bg-white mb-3 overflow-hidden ${stop.is_fixed ? 'border-red-200' : 'border-gray-100'}`}>
+    <div className={`rounded-2xl border bg-white mb-3 overflow-hidden ${borderCls}`}>
       <button className="w-full flex items-center gap-3 px-4 py-4 text-left" onClick={() => setExpanded(e => !e)}>
-        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white ${stop.is_fixed ? 'bg-red-500' : 'bg-indigo-600'}`}>
+        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white ${dotCls}`}>
           {seq}
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 text-sm truncate">{venue?.name ?? '—'}</p>
           <p className="text-xs text-gray-400">{[venue?.city, venue?.state].filter(Boolean).join(', ')}</p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 space-y-0.5">
           {hasDates ? (
             <p className="text-xs text-gray-500">{formatDateRange(stop.arrival_date, stop.departure_date)}</p>
           ) : (
             <p className="text-xs text-gray-300">Dates TBD</p>
           )}
-          {stop.is_fixed && <p className="text-xs text-red-400 font-medium">📌 Fixed</p>}
+          {isStart && <p className="text-xs text-green-600 font-semibold">▶ Start</p>}
+          {isEnd   && <p className="text-xs text-orange-500 font-semibold">⬛ End</p>}
+          {stop.is_fixed && !isStart && !isEnd && <p className="text-xs text-red-400 font-medium">📌 Fixed</p>}
         </div>
       </button>
 
@@ -55,7 +69,29 @@ function StopCard({ stop, seq, onPin, onRemove }) {
             )}
           </div>
           {venue?.address && <p className="text-xs text-gray-500">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>}
+
+          {/* Route anchor row */}
           <div className="flex gap-2 pt-1">
+            <button onClick={() => onSetStart(stop)}
+              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
+                isStart
+                  ? 'border-green-300 text-green-700 bg-green-50'
+                  : 'border-green-200 text-green-600 bg-white hover:bg-green-50'
+              }`}>
+              {isStart ? '▶ Start (clear)' : '▶ Set Start'}
+            </button>
+            <button onClick={() => onSetEnd(stop)}
+              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
+                isEnd
+                  ? 'border-orange-300 text-orange-600 bg-orange-50'
+                  : 'border-orange-200 text-orange-500 bg-white hover:bg-orange-50'
+              }`}>
+              {isEnd ? '⬛ End (clear)' : '⬛ Set End'}
+            </button>
+          </div>
+
+          {/* Date pin + remove row */}
+          <div className="flex gap-2">
             <button onClick={() => onPin(stop)}
               className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
                 stop.is_fixed
@@ -501,7 +537,19 @@ export default function TourDetail() {
 
     setOptimizing(true); setOptError('')
     try {
-      const waypoints = stops.map(s => ({
+      // Respect designated start/end anchors
+      const startStop = stops.find(s => s.is_start_stop)
+      const endStop   = stops.find(s => s.is_end_stop)
+      const middle    = stops.filter(s => s !== startStop && s !== endStop)
+      const orderedForOpt = [
+        ...(startStop ? [startStop] : []),
+        ...middle,
+        ...(endStop ? [endStop] : []),
+      ]
+      // If no designated start, use existing order as-is
+      const stopsToOpt = orderedForOpt.length > 0 ? orderedForOpt : stops
+
+      const waypoints = stopsToOpt.map(s => ({
         id: s.id,
         lat: s.venues.lat,
         lng: s.venues.lng,
@@ -510,7 +558,7 @@ export default function TourDetail() {
         state: s.venues.state,
       }))
 
-      const { orderedStops, legs: newLegs } = await optimizeRoute(waypoints)
+      const { orderedStops, legs: newLegs } = await optimizeRoute(waypoints, { fixedEnd: !!endStop })
       setLegs(newLegs)
 
       // Map optimized waypoints back to full stop objects so rest_days/buffer_days are preserved
@@ -556,6 +604,24 @@ export default function TourDetail() {
     } finally {
       setOptimizing(false)
     }
+  }
+
+  async function handleSetStart(stop) {
+    // Clear any existing start, then toggle this stop
+    await supabase.from('tour_stops').update({ is_start_stop: false }).eq('tour_id', id)
+    if (!stop.is_start_stop) {
+      await supabase.from('tour_stops').update({ is_start_stop: true }).eq('id', stop.id)
+    }
+    loadTour()
+  }
+
+  async function handleSetEnd(stop) {
+    // Clear any existing end, then toggle this stop
+    await supabase.from('tour_stops').update({ is_end_stop: false }).eq('tour_id', id)
+    if (!stop.is_end_stop) {
+      await supabase.from('tour_stops').update({ is_end_stop: true }).eq('id', stop.id)
+    }
+    loadTour()
   }
 
   async function handlePin(stop) {
@@ -687,7 +753,7 @@ export default function TourDetail() {
               </div>
             ) : (
               stops.map((stop, i) => (
-                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onRemove={handleRemove} />
+                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} />
               ))
             )}
           </div>
@@ -718,7 +784,7 @@ export default function TourDetail() {
             </div>
           ) : (
             stops.map((stop, i) => (
-              <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onRemove={handleRemove} />
+              <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} />
             ))
           )}
         </div>
