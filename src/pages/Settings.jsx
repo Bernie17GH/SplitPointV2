@@ -961,7 +961,7 @@ export default function Settings() {
     <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-2xl">
       <h1 className="text-3xl font-bold text-gray-900 mb-6">Settings</h1>
 
-      <Section title="Profile" icon="👤" defaultOpen>
+      <Section title="Profile" icon="👤">
         <ProfileSection user={user} updateUser={updateUser} />
       </Section>
 
