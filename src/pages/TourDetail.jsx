@@ -34,7 +34,8 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
 
   return (
     <div className={`rounded-2xl border bg-white mb-3 overflow-hidden ${borderCls}`}>
-      <button className="w-full flex items-center gap-3 px-4 py-4 text-left" onClick={() => setExpanded(e => !e)}>
+      {/* Main row — tapping expands details */}
+      <button className="w-full flex items-center gap-3 px-4 pt-3 pb-2 text-left" onClick={() => setExpanded(e => !e)}>
         <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 text-white ${dotCls}`}>
           {seq}
         </div>
@@ -48,12 +49,35 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
           ) : (
             <p className="text-xs text-gray-300">Dates TBD</p>
           )}
-          {isStart && <p className="text-xs text-green-600 font-semibold">▶ Start</p>}
-          {isEnd   && <p className="text-xs text-orange-500 font-semibold">⬛ End</p>}
           {stop.is_fixed && !isStart && !isEnd && <p className="text-xs text-red-400 font-medium">📌 Fixed</p>}
         </div>
       </button>
 
+      {/* Route anchor chips — always visible, independent of expand state */}
+      <div className="flex gap-2 px-4 pb-3" onClick={e => e.stopPropagation()}>
+        <button
+          onClick={() => onSetStart(stop)}
+          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${
+            isStart
+              ? 'border-green-400 text-green-700 bg-green-50'
+              : 'border-gray-200 text-gray-400 bg-white hover:border-green-300 hover:text-green-600'
+          }`}
+        >
+          {isStart ? '▶ Start' : '▶ Set Start'}
+        </button>
+        <button
+          onClick={() => onSetEnd(stop)}
+          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${
+            isEnd
+              ? 'border-orange-400 text-orange-600 bg-orange-50'
+              : 'border-gray-200 text-gray-400 bg-white hover:border-orange-300 hover:text-orange-500'
+          }`}
+        >
+          {isEnd ? '■ End' : '■ Set End'}
+        </button>
+      </div>
+
+      {/* Expanded details */}
       {expanded && (
         <div className="border-t border-gray-50 px-4 py-3 space-y-2 bg-gray-50">
           {stop.travel_hours_from_prev != null && (
@@ -70,28 +94,8 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove }) {
           </div>
           {venue?.address && <p className="text-xs text-gray-500">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>}
 
-          {/* Route anchor row */}
+          {/* Date pin + remove */}
           <div className="flex gap-2 pt-1">
-            <button onClick={() => onSetStart(stop)}
-              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
-                isStart
-                  ? 'border-green-300 text-green-700 bg-green-50'
-                  : 'border-green-200 text-green-600 bg-white hover:bg-green-50'
-              }`}>
-              {isStart ? '▶ Start (clear)' : '▶ Set Start'}
-            </button>
-            <button onClick={() => onSetEnd(stop)}
-              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
-                isEnd
-                  ? 'border-orange-300 text-orange-600 bg-orange-50'
-                  : 'border-orange-200 text-orange-500 bg-white hover:bg-orange-50'
-              }`}>
-              {isEnd ? '⬛ End (clear)' : '⬛ Set End'}
-            </button>
-          </div>
-
-          {/* Date pin + remove row */}
-          <div className="flex gap-2">
             <button onClick={() => onPin(stop)}
               className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
                 stop.is_fixed
