@@ -135,21 +135,28 @@ function ProfileSection({ user, updateUser }) {
   )
 }
 
+// ─── Per-user localStorage helper ────────────────────────────────────────────
+
+/** Returns a localStorage key scoped to the given user ID. */
+function userKey(userId, name) {
+  return `sp_${userId}_${name}`
+}
+
 // ─── Display section ─────────────────────────────────────────────────────────
 
-function DisplaySection() {
-  const [dark, setDark] = useState(() => localStorage.getItem('sp_dark') === 'true')
-  const [compact, setCompact] = useState(() => localStorage.getItem('sp_compact') === 'true')
+function DisplaySection({ userId }) {
+  const [dark,    setDark]    = useState(() => localStorage.getItem(userKey(userId, 'dark'))    === 'true')
+  const [compact, setCompact] = useState(() => localStorage.getItem(userKey(userId, 'compact')) === 'true')
 
   function toggleDark(val) {
     setDark(val)
-    localStorage.setItem('sp_dark', val)
+    localStorage.setItem(userKey(userId, 'dark'), val)
     document.documentElement.classList.toggle('dark', val)
   }
 
   function toggleCompact(val) {
     setCompact(val)
-    localStorage.setItem('sp_compact', val)
+    localStorage.setItem(userKey(userId, 'compact'), val)
     document.documentElement.classList.toggle('compact', val)
   }
 
@@ -173,25 +180,25 @@ function DisplaySection() {
 
 // ─── Coordinators section ────────────────────────────────────────────────────
 
-const COORD_KEYS = {
-  email:   'sp_coord_email',
-  sms:     'sp_coord_sms',
-  auto:    'sp_coord_auto',
-  autoMsg: 'sp_coord_msg',
-}
+function CoordinatorsSection({ userId }) {
+  const keys = {
+    email:   userKey(userId, 'coord_email'),
+    sms:     userKey(userId, 'coord_sms'),
+    auto:    userKey(userId, 'coord_auto'),
+    autoMsg: userKey(userId, 'coord_msg'),
+  }
 
-function CoordinatorsSection() {
   const [emailNotifs, setEmailNotifs] = useState(
-    () => localStorage.getItem(COORD_KEYS.email) !== 'false'
+    () => localStorage.getItem(keys.email) !== 'false'
   )
   const [smsNotifs, setSmsNotifs] = useState(
-    () => localStorage.getItem(COORD_KEYS.sms) === 'true'
+    () => localStorage.getItem(keys.sms) === 'true'
   )
   const [autoRespond, setAutoRespond] = useState(
-    () => localStorage.getItem(COORD_KEYS.auto) === 'true'
+    () => localStorage.getItem(keys.auto) === 'true'
   )
   const [autoMsg, setAutoMsg] = useState(
-    () => localStorage.getItem(COORD_KEYS.autoMsg) || ''
+    () => localStorage.getItem(keys.autoMsg) || ''
   )
 
   function set(key, setter, val) {
@@ -201,7 +208,7 @@ function CoordinatorsSection() {
 
   function saveAutoMsg(val) {
     setAutoMsg(val)
-    localStorage.setItem(COORD_KEYS.autoMsg, val)
+    localStorage.setItem(keys.autoMsg, val)
   }
 
   return (
@@ -210,19 +217,19 @@ function CoordinatorsSection() {
         label="Email notifications"
         description="Receive booking inquiries and updates by email"
         value={emailNotifs}
-        onChange={(v) => set(COORD_KEYS.email, setEmailNotifs, v)}
+        onChange={(v) => set(keys.email, setEmailNotifs, v)}
       />
       <Toggle
         label="SMS notifications"
         description="Receive urgent alerts via text message"
         value={smsNotifs}
-        onChange={(v) => set(COORD_KEYS.sms, setSmsNotifs, v)}
+        onChange={(v) => set(keys.sms, setSmsNotifs, v)}
       />
       <Toggle
         label="Auto-respond to inquiries"
         description="Send an automatic reply when a new inquiry arrives"
         value={autoRespond}
-        onChange={(v) => set(COORD_KEYS.auto, setAutoRespond, v)}
+        onChange={(v) => set(keys.auto, setAutoRespond, v)}
       />
       {autoRespond && (
         <div className="mt-3">
@@ -959,11 +966,11 @@ export default function Settings() {
       </Section>
 
       <Section title="Display" icon="🎨">
-        <DisplaySection />
+        <DisplaySection userId={user.id} />
       </Section>
 
       <Section title="Coordinators" icon="📋">
-        <CoordinatorsSection />
+        <CoordinatorsSection userId={user.id} />
       </Section>
 
       <Section title="Agreements" icon="📄">
