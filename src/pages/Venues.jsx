@@ -202,10 +202,12 @@ export default function Venues() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
 
-  const [venues, setVenues] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [editing, setEditing] = useState(null)
+  const [venues,      setVenues]      = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState('')
+  const [editing,     setEditing]     = useState(null)
+  const [filterState, setFilterState] = useState('')
+  const [filterCity,  setFilterCity]  = useState('')
 
   useEffect(() => {
     setError('')
@@ -221,13 +223,39 @@ export default function Venues() {
     setEditing(null)
   }
 
+  // All unique states across all venues
+  const allStates = [...new Set(venues.map(v => v.state).filter(Boolean))].sort()
+
+  // Cities filtered to only those in the selected state (or all cities if no state selected)
+  const availableCities = [...new Set(
+    venues
+      .filter(v => !filterState || v.state === filterState)
+      .map(v => v.city)
+      .filter(Boolean)
+  )].sort()
+
+  // When state changes, clear city if it's no longer in the available set
+  function handleStateChange(state) {
+    setFilterState(state)
+    if (filterCity) {
+      const citiesInState = venues
+        .filter(v => !state || v.state === state)
+        .map(v => v.city)
+      if (!citiesInState.includes(filterCity)) setFilterCity('')
+    }
+  }
+
+  const filteredVenues = venues.filter(v =>
+    (!filterState || v.state === filterState) &&
+    (!filterCity  || v.city  === filterCity)
+  )
+
+  const selectCls = 'rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent'
+
   return (
     <div className="px-4 py-8 md:px-8 md:py-10 md:max-w-6xl">
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Venues</h1>
-          <p className="text-gray-500 mt-1">Atlanta · Small hip-hop venues</p>
-        </div>
+        <h1 className="text-3xl font-bold text-gray-900">Venues</h1>
         {isAdmin && (
           <button className="rounded-xl bg-indigo-600 text-white text-sm font-medium px-4 py-2 hover:bg-indigo-700 transition-colors">
             + Add
@@ -235,15 +263,35 @@ export default function Venues() {
         )}
       </div>
 
-      <p className="text-xs text-gray-400 mb-4">
-        {loading ? 'Loading…' : `${venues.length} venues`}
-      </p>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <select value={filterState} onChange={e => handleStateChange(e.target.value)} className={selectCls}>
+          <option value="">All states</option>
+          {allStates.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <select value={filterCity} onChange={e => setFilterCity(e.target.value)} className={selectCls}>
+          <option value="">All cities</option>
+          {availableCities.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+        {(filterState || filterCity) && (
+          <button
+            onClick={() => { setFilterState(''); setFilterCity('') }}
+            className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+          >
+            Clear filters
+          </button>
+        )}
+        <p className="text-xs text-gray-400 ml-auto">
+          {loading ? 'Loading…' : `${filteredVenues.length}${filteredVenues.length !== venues.length ? ` of ${venues.length}` : ''} venues`}
+        </p>
+      </div>
+
       {error && (
         <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3 mb-4">{error}</p>
       )}
 
       <div className="space-y-4 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:space-y-0">
-        {venues.map((venue) => (
+        {filteredVenues.map((venue) => (
           <VenueCard
             key={venue.id}
             venue={venue}
