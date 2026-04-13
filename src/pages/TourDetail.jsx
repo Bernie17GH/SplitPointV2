@@ -945,7 +945,7 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
               ))}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Show Start Time</label>
                 <input type="time" step="1800"
@@ -953,29 +953,31 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                   onChange={e => setSO('show_start_hour', e.target.value ? timeStrToHour(e.target.value) : '')}
                   placeholder="Tour default" className={inputCls} />
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
-                <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
-                  onChange={e => setSO('show_duration_hours', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
-                <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
-                  onChange={e => setSO('production_setup_hours', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
-                <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
-                  onChange={e => setSO('breakdown_hours', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
-                <input type="number" min="0" value={stopOpts.rest_days}
-                  onChange={e => setSO('rest_days', e.target.value)}
-                  placeholder="Tour default" className={inputCls} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
+                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
+                    onChange={e => setSO('show_duration_hours', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
+                  <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
+                    onChange={e => setSO('production_setup_hours', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
+                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
+                    onChange={e => setSO('breakdown_hours', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
+                  <input type="number" min="0" value={stopOpts.rest_days}
+                    onChange={e => setSO('rest_days', e.target.value)}
+                    placeholder="Tour default" className={inputCls} />
+                </div>
               </div>
             </div>
 
@@ -1021,7 +1023,7 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
             ))}
             <div className="border-t border-gray-100 pt-3 space-y-3">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Stop Options</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-3">
                 <div>
                   <label className="block text-xs text-gray-500 mb-1">Show Start Time</label>
                   <input type="time" step="1800"
@@ -1029,29 +1031,31 @@ function AddStopSheet({ open, onClose, tourId, onAdded }) {
                     onChange={e => setSO('show_start_hour', e.target.value ? timeStrToHour(e.target.value) : '')}
                     className={inputCls} />
                 </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
-                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
-                    onChange={e => setSO('show_duration_hours', e.target.value)}
-                    placeholder="Tour default" className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
-                  <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
-                    onChange={e => setSO('production_setup_hours', e.target.value)}
-                    placeholder="Tour default" className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
-                  <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
-                    onChange={e => setSO('breakdown_hours', e.target.value)}
-                    placeholder="Tour default" className={inputCls} />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
-                  <input type="number" min="0" value={stopOpts.rest_days}
-                    onChange={e => setSO('rest_days', e.target.value)}
-                    placeholder="Tour default" className={inputCls} />
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Show Duration (hrs)</label>
+                    <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.show_duration_hours}
+                      onChange={e => setSO('show_duration_hours', e.target.value)}
+                      placeholder="Tour default" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Load-in (hrs)</label>
+                    <input type="number" min="0.5" max="12" step="0.5" value={stopOpts.production_setup_hours}
+                      onChange={e => setSO('production_setup_hours', e.target.value)}
+                      placeholder="Tour default" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Load-out (hrs)</label>
+                    <input type="number" min="0.5" max="6" step="0.5" value={stopOpts.breakdown_hours}
+                      onChange={e => setSO('breakdown_hours', e.target.value)}
+                      placeholder="Tour default" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Rest Days (multi-night)</label>
+                    <input type="number" min="0" value={stopOpts.rest_days}
+                      onChange={e => setSO('rest_days', e.target.value)}
+                      placeholder="Tour default" className={inputCls} />
+                  </div>
                 </div>
               </div>
             </div>
