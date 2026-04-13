@@ -33,14 +33,22 @@ export default function Home() {
         ? supabase.from('artists').select('*', { count: 'exact', head: true })
         : supabase.from('artists').select('*', { count: 'exact', head: true }).eq('agent_id', user?.id)
 
-      const [artistsRes, venuesRes] = await Promise.all([
+      const toursBase = isAdmin
+        ? supabase.from('tours')
+        : supabase.from('tours').eq('agent_id', user?.id)
+
+      const [artistsRes, venuesRes, activeRes, draftRes] = await Promise.all([
         artistQuery,
         supabase.from('venues').select('*', { count: 'exact', head: true }),
+        toursBase.select('*', { count: 'exact', head: true }).eq('status', 'active'),
+        toursBase.select('*', { count: 'exact', head: true }).eq('status', 'draft'),
       ])
 
       setStats({
-        myArtists:  artistsRes.count ?? 0,
-        venueCount: venuesRes.count  ?? 0,
+        myArtists:   artistsRes.count ?? 0,
+        venueCount:  venuesRes.count  ?? 0,
+        activeTours: activeRes.count  ?? 0,
+        draftTours:  draftRes.count   ?? 0,
       })
     }
     load()
@@ -68,17 +76,17 @@ export default function Home() {
         />
         <StatCard
           label="Active Tours"
-          value="0"
+          value={stats?.activeTours ?? '—'}
           sub="in progress"
           to="/tours"
-          loading={false}
+          loading={!stats}
         />
         <StatCard
-          label="Pending"
-          value="0"
-          sub="awaiting reply"
+          label="Draft Tours"
+          value={stats?.draftTours ?? '—'}
+          sub="in planning"
           to="/tours"
-          loading={false}
+          loading={!stats}
         />
       </div>
     </div>
