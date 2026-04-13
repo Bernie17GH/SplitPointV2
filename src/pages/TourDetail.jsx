@@ -14,6 +14,25 @@ const STATUS_STYLE = {
   cancelled: 'bg-red-100 text-red-500',
 }
 
+// ─── Drive-time leg connector ─────────────────────────────────────────────────
+
+function LegConnector({ stop, twoDriver }) {
+  const hours = stop.travel_hours_from_prev ?? stop.estimated_drive_hours
+  if (!hours) return null
+  const needs2Driver = twoDriver && hours > 8
+  return (
+    <div className="flex items-center gap-2 px-4 py-1 my-1">
+      <div className="w-0.5 h-4 bg-gray-200 mx-3 shrink-0" />
+      <span className="text-xs text-gray-400">{hours.toFixed(1)}h drive</span>
+      {needs2Driver && (
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+          2-Driver Leg
+        </span>
+      )}
+    </div>
+  )
+}
+
 // ─── Compliance warning banner ────────────────────────────────────────────────
 
 function ComplianceWarningBanner({ warning, onSwitchToTwoDriver, onAddRestStop }) {
@@ -1045,21 +1064,26 @@ export default function TourDetail() {
   }
 
   async function handleAddRestStop(afterStopIndex) {
-    // Insert a transit_rest stop after the given index with sequence_order shifted
-    const newOrder = afterStopIndex + 1
-    // Shift all subsequent stops up by 1
-    const toShift = stops.slice(newOrder).map(s => ({ ...s, sequence_order: s.sequence_order + 1 }))
-    await Promise.all(toShift.map(s =>
-      supabase.from('tour_stops').update({ sequence_order: s.sequence_order }).eq('id', s.id)
-    ))
-    await supabase.from('tour_stops').insert({
-      tour_id:        id,
-      venue_id:       null,
-      sequence_order: newOrder,
-      stop_type:      'transit_rest',
-      rest_days:      1,
-    })
-    loadTour()
+    setOptError('')
+    try {
+      const newOrder = afterStopIndex + 1
+      // Shift all subsequent stops up by 1 (use their DB sequence_order, not array index)
+      const toShift = stops.slice(newOrder)
+      await Promise.all(toShift.map(s =>
+        supabase.from('tour_stops').update({ sequence_order: s.sequence_order + 1 }).eq('id', s.id)
+      ))
+      // Insert rest stop — omit venue_id entirely so it stays NULL without FK conflict
+      const { error: insertErr } = await supabase.from('tour_stops').insert({
+        tour_id:        id,
+        sequence_order: newOrder,
+        stop_type:      'transit_rest',
+        rest_days:      1,
+      })
+      if (insertErr) throw insertErr
+      loadTour()
+    } catch (e) {
+      setOptError(`Could not add rest stop: ${e.message}`)
+    }
   }
 
   async function handleOptimize() {
@@ -1321,6 +1345,7 @@ export default function TourDetail() {
             ) : (
               stops.map((stop, i) => (
                 <div key={stop.id}>
+                  {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} />}
                   {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                     <ComplianceWarningBanner key={wi} warning={w}
                       onSwitchToTwoDriver={handleSwitchToTwoDriver}
@@ -1369,6 +1394,7 @@ export default function TourDetail() {
               ) : (
                 stops.map((stop, i) => (
                   <div key={stop.id}>
+                    {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} />}
                     {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                       <ComplianceWarningBanner key={wi} warning={w}
                         onSwitchToTwoDriver={handleSwitchToTwoDriver}
