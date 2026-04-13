@@ -138,6 +138,105 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaul
   )
 }
 
+// ─── Schedule view ────────────────────────────────────────────────────────────
+
+function formatTravel(h) {
+  if (h == null) return null
+  if (h === 0) return 'Same venue — no drive'
+  const totalMin = Math.round(h * 60)
+  const hours    = Math.floor(totalMin / 60)
+  const mins     = totalMin % 60
+  if (hours === 0) return `${mins} min drive`
+  if (mins  === 0) return `${hours}h drive`
+  return `${hours}h ${mins} min drive`
+}
+
+function ScheduleRow({ label, value, sub, accent }) {
+  return (
+    <div className="flex items-baseline justify-between text-xs py-0.5">
+      <span className={`font-medium w-24 shrink-0 ${accent ? 'text-indigo-600' : 'text-gray-500'}`}>{label}</span>
+      <span className={`font-semibold text-right flex-1 ${accent ? 'text-indigo-700' : 'text-gray-800'}`}>{value ?? '—'}</span>
+      {sub && <span className="text-gray-300 ml-3 shrink-0 text-xs">{sub}</span>}
+    </div>
+  )
+}
+
+function ScheduleView({ stops, tourDefaults: def }) {
+  if (!stops.length) return (
+    <p className="text-sm text-gray-400 text-center py-12">No stops yet — add stops and optimize to see the schedule.</p>
+  )
+
+  return (
+    <div className="pb-24 max-w-xl mx-auto">
+      {stops.map((stop, i) => {
+        const venue          = stop.venues
+        const showStart      = stop.show_start_hour          ?? def.show_start_hour        ?? 20
+        const showDuration   = stop.show_duration_hours      ?? def.show_duration_hours    ?? 2
+        const setupHours     = stop.production_setup_hours   ?? def.production_setup_hours ?? 4
+        const breakdownHours = stop.breakdown_hours          ?? def.breakdown_hours        ?? 2
+        const showEnd        = (showStart + showDuration) % 24
+        const setupDeadline  = showStart - setupHours
+        const travelNext     = stops[i + 1]?.travel_hours_from_prev
+        const isStart        = stop.is_start_stop
+        const isEnd          = stop.is_end_stop
+
+        return (
+          <div key={stop.id}>
+            {/* Stop card */}
+            <div className={`rounded-2xl bg-white border overflow-hidden ${isStart ? 'border-green-300' : isEnd ? 'border-orange-300' : 'border-gray-100'}`}>
+              {/* Venue header */}
+              <div className={`px-4 py-3 flex items-center justify-between ${isStart ? 'bg-green-50' : isEnd ? 'bg-orange-50' : 'bg-gray-50'} border-b border-gray-100`}>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${isStart ? 'bg-green-500' : isEnd ? 'bg-orange-400' : 'bg-indigo-600'}`}>
+                    {i + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm truncate">{venue?.name ?? '—'}</p>
+                    <p className="text-xs text-gray-500">{[venue?.city, venue?.state].filter(Boolean).join(', ')}</p>
+                  </div>
+                </div>
+                {(isStart || isEnd) && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ml-2 ${isStart ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-600'}`}>
+                    {isStart ? '▶ Start' : '■ End'}
+                  </span>
+                )}
+              </div>
+              {/* Schedule rows */}
+              <div className="px-4 py-3 divide-y divide-gray-50">
+                <div className="pb-2 space-y-0.5">
+                  <ScheduleRow label="Arrives"    value={formatArrivalTime(stop.arrival_date)} />
+                  <ScheduleRow label="Setup by"   value={formatHour(setupDeadline)} sub={`${setupHours}h needed`} />
+                </div>
+                <div className="py-2">
+                  <ScheduleRow label="Show"       value={`${formatHour(showStart)} – ${formatHour(showEnd)}`} sub={`${showDuration}h`} accent />
+                </div>
+                <div className="pt-2 space-y-0.5">
+                  <ScheduleRow label="Breakdown"  value={`${breakdownHours}h`} />
+                  <ScheduleRow label="Departs"    value={formatArrivalTime(stop.departure_date)} />
+                </div>
+              </div>
+            </div>
+
+            {/* Travel connector to next stop */}
+            {i < stops.length - 1 && (
+              <div className="flex items-center gap-3 px-6 py-1">
+                <div className="flex flex-col items-center gap-0.5 shrink-0">
+                  <div className="w-px h-3 bg-gray-200" />
+                  <div className="text-gray-300 text-xs">↓</div>
+                  <div className="w-px h-3 bg-gray-200" />
+                </div>
+                <p className="text-xs text-gray-400 font-medium">
+                  {travelNext != null ? formatTravel(travelNext) : 'Optimize to calculate drive time'}
+                </p>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── Edit Tour sheet ──────────────────────────────────────────────────────────
 
 const STATUSES = ['draft', 'active', 'completed', 'cancelled']
@@ -665,7 +764,7 @@ export default function TourDetail() {
   const [tour, setTour]         = useState(null)
   const [stops, setStops]       = useState([])
   const [legs, setLegs]         = useState([])
-  const [view, setView]         = useState('list') // 'list' | 'map'
+  const [view, setView]         = useState('list') // 'list' | 'map' | 'schedule'
   const [addingStop, setAddingStop]   = useState(false)
   const [editingTour, setEditingTour] = useState(false)
   const [optimizing, setOptimizing]   = useState(false)
@@ -907,13 +1006,13 @@ export default function TourDetail() {
         </div>
       )}
 
-      {/* Mobile: List / Map toggle + Add Stop */}
+      {/* Mobile: List / Map / Schedule toggle + Add Stop */}
       <div className="mx-4 mb-4 flex items-center gap-2 md:hidden">
         <div className="flex-1 flex rounded-xl bg-gray-100 p-1 gap-1">
-          {['list', 'map'].map(v => (
+          {[['list', '≡ List'], ['map', '⊕ Map'], ['schedule', '📅']].map(([v, label]) => (
             <button key={v} onClick={() => setView(v)}
-              className={`flex-1 rounded-lg text-sm font-medium py-1.5 transition-colors capitalize ${view === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
-              {v === 'list' ? '≡ List' : '⊕ Map'}
+              className={`flex-1 rounded-lg text-sm font-medium py-1.5 transition-colors ${view === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'}`}>
+              {label}
             </button>
           ))}
         </div>
@@ -925,8 +1024,16 @@ export default function TourDetail() {
         </button>
       </div>
 
-      {/* Desktop: Add Stop button */}
-      <div className="hidden md:flex mx-8 mb-4 justify-end">
+      {/* Desktop: view toggle + Add Stop button */}
+      <div className="hidden md:flex mx-8 mb-4 items-center justify-between">
+        <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
+          {[['list', '≡ List'], ['map', '⊕ Map'], ['schedule', '📅 Schedule']].map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)}
+              className={`rounded-lg text-sm font-medium px-4 py-1.5 transition-colors ${view === v ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={() => setAddingStop(true)}
           className="rounded-xl bg-indigo-600 text-white text-sm font-semibold px-4 py-2 hover:bg-indigo-700 transition-colors"
@@ -935,9 +1042,9 @@ export default function TourDetail() {
         </button>
       </div>
 
-      {/* Mobile content: toggled list or map */}
+      {/* Mobile content: toggled list / map / schedule */}
       <div className="md:hidden">
-        {view === 'list' ? (
+        {view === 'list' && (
           <div className="flex-1 px-4 pb-24">
             {stops.length === 0 ? (
               <div className="rounded-2xl bg-white border border-gray-100 shadow-sm text-center py-14">
@@ -953,7 +1060,8 @@ export default function TourDetail() {
               ))
             )}
           </div>
-        ) : (
+        )}
+        {view === 'map' && (
           <div className="mx-4 mb-24 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
             {mapStops.length === 0 ? (
               <div className="flex items-center justify-center bg-gray-50" style={{ height: 420 }}>
@@ -964,36 +1072,47 @@ export default function TourDetail() {
             )}
           </div>
         )}
+        {view === 'schedule' && (
+          <div className="px-4">
+            <ScheduleView stops={stops} tourDefaults={tourDefaults} />
+          </div>
+        )}
       </div>
 
-      {/* Desktop content: side-by-side list + map */}
-      <div className="hidden md:grid md:grid-cols-2 md:gap-6 md:px-8 md:pb-10" style={{ gridTemplateColumns: '1fr 1.4fr' }}>
-        {/* Stop list */}
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-          {stops.length === 0 ? (
-            <div className="rounded-2xl bg-white border border-gray-100 shadow-sm text-center py-14">
-              <p className="text-gray-400 text-sm mb-3">No stops yet</p>
-              <button onClick={() => setAddingStop(true)}
-                className="rounded-xl bg-indigo-600 text-white text-sm font-semibold px-5 py-2 hover:bg-indigo-700">
-                Add first stop
-              </button>
+      {/* Desktop content */}
+      <div className="hidden md:block md:px-8 md:pb-10">
+        {view === 'schedule' ? (
+          <ScheduleView stops={stops} tourDefaults={tourDefaults} />
+        ) : (
+          <div className="grid gap-6" style={{ gridTemplateColumns: '1fr 1.4fr' }}>
+            {/* Stop list */}
+            <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 320px)' }}>
+              {stops.length === 0 ? (
+                <div className="rounded-2xl bg-white border border-gray-100 shadow-sm text-center py-14">
+                  <p className="text-gray-400 text-sm mb-3">No stops yet</p>
+                  <button onClick={() => setAddingStop(true)}
+                    className="rounded-xl bg-indigo-600 text-white text-sm font-semibold px-5 py-2 hover:bg-indigo-700">
+                    Add first stop
+                  </button>
+                </div>
+              ) : (
+                stops.map((stop, i) => (
+                  <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} tourDefaults={tourDefaults} />
+                ))
+              )}
             </div>
-          ) : (
-            stops.map((stop, i) => (
-              <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} />
-            ))
-          )}
-        </div>
-        {/* Map */}
-        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-          {mapStops.length === 0 ? (
-            <div className="flex items-center justify-center bg-gray-50 h-full" style={{ minHeight: 480 }}>
-              <p className="text-sm text-gray-400">Add stops with addresses to see the map</p>
+            {/* Map */}
+            <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+              {mapStops.length === 0 ? (
+                <div className="flex items-center justify-center bg-gray-50 h-full" style={{ minHeight: 480 }}>
+                  <p className="text-sm text-gray-400">Add stops with addresses to see the map</p>
+                </div>
+              ) : (
+                <HereMap stops={mapStops} legs={legs} className="w-full" style={{ minHeight: 480, height: '100%' }} />
+              )}
             </div>
-          ) : (
-            <HereMap stops={mapStops} legs={legs} className="w-full" style={{ minHeight: 480, height: '100%' }} />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <EditTourSheet
