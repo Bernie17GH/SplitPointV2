@@ -132,14 +132,15 @@ export async function enrichFromBrave(venue, fields) {
       )
       if (phoneAttr?.value) result.phone = phoneAttr.value
 
-      // 2. site:<domain> Brave search — Brave's crawler executes JavaScript, so
-      //    rendered footer content (where phone numbers usually live) appears in
-      //    snippets even though a plain fetch() would miss it entirely.
+      // 2. site:<domain> contact search — asking for "contact" ranks the contact/about
+      //    page first and its Brave snippet IS the contact info block (phone, address,
+      //    hours), unlike the homepage snippet which covers events/content.
+      //    Run twice: once targeting contact pages, once the full domain.
       if (!result.phone && result.website && !braveLimitReached()) {
         try {
           const domain = new URL(result.website).hostname
           increment()
-          const siteRes = await fetch(`/api/search?q=${encodeURIComponent(`site:${domain}`)}&count=10`)
+          const siteRes = await fetch(`/api/search?q=${encodeURIComponent(`site:${domain} contact`)}&count=10`)
           if (siteRes.ok) {
             const siteData    = await siteRes.json()
             const siteResults = siteData.web?.results ?? []
@@ -148,7 +149,6 @@ export async function enrichFromBrave(venue, fields) {
               const match = text.match(PHONE_RE)
               if (match) { result.phone = match[0]; break }
             }
-            // Also check the infobox that comes back with the site: query
             if (!result.phone) {
               const siteInbox = siteData.infobox?.results?.[0]
               const attr = siteInbox?.attributes?.find(a =>
@@ -181,13 +181,17 @@ export async function enrichFromBrave(venue, fields) {
         }
       }
 
-      // 5. Targeted phone search — appending "phone number" biases Brave toward
-      //    business-listing results that put the number directly in the snippet
+      // 5. Targeted phone search — no quotes around the name so partial/alternate
+      //    name matches (e.g. "Knight Center" vs "James L. Knight Center") still hit.
+      //    Business directories (Yelp, YP, Foursquare) reliably put the phone number
+      //    directly in their snippet text, so we scan ALL results here, not just
+      //    non-aggregators.
       if (!result.phone && !braveLimitReached()) {
-        const phoneQ = `"${venue.name}" ${[venue.city, venue.state].filter(Boolean).join(' ')} phone number`
+        const nameParts = venue.name.replace(/['"]/g, '').trim()
+        const phoneQ    = `${nameParts} ${[venue.city, venue.state].filter(Boolean).join(' ')} phone number`
         increment()
         try {
-          const phoneRes = await fetch(`/api/search?q=${encodeURIComponent(phoneQ)}&count=5`)
+          const phoneRes = await fetch(`/api/search?q=${encodeURIComponent(phoneQ)}&count=10`)
           if (phoneRes.ok) {
             const phoneData  = await phoneRes.json()
             const phoneInbox = phoneData.infobox?.results?.[0]
@@ -197,6 +201,7 @@ export async function enrichFromBrave(venue, fields) {
             if (attr?.value) {
               result.phone = attr.value
             } else {
+              // Scan all results — Yelp/YP snippets format: "Call (555) 123-4567…"
               const phoneResults = phoneData.web?.results ?? []
               for (const r of phoneResults) {
                 const text  = `${r.title ?? ''} ${r.description ?? ''}`
