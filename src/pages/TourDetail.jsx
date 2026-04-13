@@ -273,23 +273,29 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, 
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+              <div className="space-y-1.5">
                 {[
-                  { label: 'Show time', val: stop.show_start_hour        != null ? formatHour(stop.show_start_hour)              : formatHour(def.show_start_hour),                                    isDefault: stop.show_start_hour        == null },
-                  { label: 'Duration',  val: stop.show_duration_hours    != null ? `${stop.show_duration_hours}h`                : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
-                  { label: 'Load-in',   val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
-                  { label: 'Load-out',  val: stop.breakdown_hours        != null ? `${stop.breakdown_hours}h`                    : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
+                  { label: 'Show time', val: stop.show_start_hour        != null ? formatHour(stop.show_start_hour)           : formatHour(def.show_start_hour),                                          isDefault: stop.show_start_hour        == null },
+                  { label: 'Duration',  val: stop.show_duration_hours    != null ? `${stop.show_duration_hours}h`             : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
+                  { label: 'Load-in',   val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`         : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
+                  { label: 'Load-out',  val: stop.breakdown_hours        != null ? `${stop.breakdown_hours}h`                : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
                 ].map(({ label, val, isDefault }) => (
-                  <p key={label} className="text-xs text-gray-500">
-                    {label}: <span className="font-medium">{val ?? '—'}</span>
-                    {isDefault && val && <span className="text-gray-300 ml-1">default</span>}
-                  </p>
+                  <div key={label} className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{label}</span>
+                    <span className="text-xs font-medium text-gray-700">
+                      {val ?? '—'}
+                      {isDefault && val && <span className="text-gray-300 ml-1 font-normal">default</span>}
+                    </span>
+                  </div>
                 ))}
                 {(stop.rest_days ?? def.rest_days ?? 0) > 0 && (
-                  <p className="text-xs text-gray-500 col-span-2">
-                    Rest days: <span className="font-medium">{stop.rest_days ?? def.rest_days}</span>
-                    {stop.rest_days == null && <span className="text-gray-300 ml-1">default</span>}
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">Rest days</span>
+                    <span className="text-xs font-medium text-gray-700">
+                      {stop.rest_days ?? def.rest_days}
+                      {stop.rest_days == null && <span className="text-gray-300 ml-1 font-normal">default</span>}
+                    </span>
+                  </div>
                 )}
               </div>
             )}
