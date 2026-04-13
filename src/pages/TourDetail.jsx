@@ -1177,11 +1177,12 @@ export default function TourDetail() {
         sequence_order:              i,
         arrival_date:                dated[i].arrival_date,
         departure_date:              dated[i].departure_date,
-        travel_hours_from_prev:      i > 0 ? newLegs[i - 1]?.durationHours  ?? null : null,
-        estimated_drive_hours:       i > 0 ? newLegs[i - 1]?.durationHours  ?? null : null,
-        distance_miles_from_prev:    i > 0 ? newLegs[i - 1]?.distanceMiles  ?? null : null,
+        travel_hours_from_prev:      i > 0 ? newLegs[i - 1]?.durationHours   ?? null : null,
+        estimated_drive_hours:       i > 0 ? newLegs[i - 1]?.durationHours   ?? null : null,
+        distance_miles_from_prev:    i > 0 ? newLegs[i - 1]?.distanceMiles   ?? null : null,
         encoded_polyline_from_prev:  i > 0 ? newLegs[i - 1]?.encodedPolyline ?? null : null,
         stop_type:                   stop.stop_type ?? 'show',
+        requires_two_driver:         false, // reset on every optimize — re-evaluate compliance fresh
       }))
 
       const [stopsResult, tourResult] = await Promise.all([
