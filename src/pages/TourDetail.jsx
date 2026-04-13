@@ -15,12 +15,52 @@ const STATUS_STYLE = {
 
 // ─── Stop card ────────────────────────────────────────────────────────────────
 
-function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaults = {} }) {
+/** Single editable row in the stop timing form. */
+function TimingRow({ label, value, defaultVal, isTime, onChange, onReset }) {
+  const isOverride  = value != null
+  const effectiveVal = value ?? defaultVal
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-500 w-20 shrink-0">{label}</span>
+      <div className="flex items-center gap-1.5 flex-1">
+        {isTime ? (
+          <input
+            type="time"
+            value={hourToTimeStr(effectiveVal)}
+            onChange={e => onChange(timeStrToHour(e.target.value))}
+            className={`flex-1 text-xs border rounded-lg px-2 py-1.5 bg-white ${isOverride ? 'border-indigo-300 text-gray-800' : 'border-gray-200 text-gray-400'}`}
+          />
+        ) : (
+          <>
+            <input
+              type="number" min="0" step="0.5"
+              value={effectiveVal}
+              onChange={e => onChange(parseFloat(e.target.value) || 0)}
+              className={`w-16 text-xs border rounded-lg px-2 py-1.5 bg-white text-center ${isOverride ? 'border-indigo-300 text-gray-800' : 'border-gray-200 text-gray-400'}`}
+            />
+            <span className="text-xs text-gray-400">h</span>
+          </>
+        )}
+        {isOverride
+          ? <button onClick={onReset} className="text-xs text-gray-400 hover:text-red-400 ml-auto" title="Reset to tour default">× default</button>
+          : <span className="text-xs text-gray-300 ml-auto">default</span>
+        }
+      </div>
+    </div>
+  )
+}
+
+function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, tourDefaults = {} }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing,  setEditing]  = useState(false)
+  const [form,     setForm]     = useState({})
+  const [saving,   setSaving]   = useState(false)
+
   const venue    = stop.venues
   const hasDates = stop.arrival_date && stop.departure_date
   const isStart  = stop.is_start_stop
   const isEnd    = stop.is_end_stop
+  const def      = tourDefaults
 
   const borderCls = isStart ? 'border-green-300'
     : isEnd               ? 'border-orange-300'
@@ -31,6 +71,31 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaul
     : isEnd             ? 'bg-orange-400'
     : stop.is_fixed     ? 'bg-red-500'
     : 'bg-indigo-600'
+
+  function startEdit() {
+    setForm({
+      show_start_hour:        stop.show_start_hour,
+      show_duration_hours:    stop.show_duration_hours,
+      production_setup_hours: stop.production_setup_hours,
+      breakdown_hours:        stop.breakdown_hours,
+    })
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    setSaving(true)
+    const { error } = await supabase
+      .from('tour_stops')
+      .update({
+        show_start_hour:        form.show_start_hour,
+        show_duration_hours:    form.show_duration_hours,
+        production_setup_hours: form.production_setup_hours,
+        breakdown_hours:        form.breakdown_hours,
+      })
+      .eq('id', stop.id)
+    setSaving(false)
+    if (!error) { setEditing(false); onUpdate?.() }
+  }
 
   return (
     <div className={`rounded-2xl border bg-white mb-3 overflow-hidden ${borderCls}`}>
@@ -53,78 +118,100 @@ function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, tourDefaul
         </div>
       </button>
 
-      {/* Route anchor chips — always visible, independent of expand state */}
+      {/* Route anchor chips — always visible */}
       <div className="flex gap-2 px-4 pb-3" onClick={e => e.stopPropagation()}>
-        <button
-          onClick={() => onSetStart(stop)}
-          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${
-            isStart
-              ? 'border-green-400 text-green-700 bg-green-50'
-              : 'border-gray-200 text-gray-400 bg-white hover:border-green-300 hover:text-green-600'
-          }`}
-        >
+        <button onClick={() => onSetStart(stop)}
+          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${isStart ? 'border-green-400 text-green-700 bg-green-50' : 'border-gray-200 text-gray-400 bg-white hover:border-green-300 hover:text-green-600'}`}>
           {isStart ? '▶ Start' : '▶ Set Start'}
         </button>
-        <button
-          onClick={() => onSetEnd(stop)}
-          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${
-            isEnd
-              ? 'border-orange-400 text-orange-600 bg-orange-50'
-              : 'border-gray-200 text-gray-400 bg-white hover:border-orange-300 hover:text-orange-500'
-          }`}
-        >
+        <button onClick={() => onSetEnd(stop)}
+          className={`flex-1 text-xs font-semibold py-1 rounded-lg border transition-colors ${isEnd ? 'border-orange-400 text-orange-600 bg-orange-50' : 'border-gray-200 text-gray-400 bg-white hover:border-orange-300 hover:text-orange-500'}`}>
           {isEnd ? '■ End' : '■ Set End'}
         </button>
       </div>
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-gray-50 px-4 py-3 space-y-2 bg-gray-50">
-          {stop.travel_hours_from_prev != null && (
-            <p className="text-xs text-gray-500">Drive from previous: <span className="font-medium">{stop.travel_hours_from_prev}h</span></p>
-          )}
-          {stop.arrival_date && (
-            <p className="text-xs text-gray-500">
-              Arrives: <span className="font-medium">{formatArrivalTime(stop.arrival_date)}</span>
-              {stop.departure_date && (
-                <> &nbsp;·&nbsp; Departs: <span className="font-medium">{formatArrivalTime(stop.departure_date)}</span></>
+        <div className="border-t border-gray-50 px-4 py-3 space-y-3 bg-gray-50">
+
+          {/* Timing section */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600">Timing</p>
+              {!editing && (
+                <button onClick={startEdit} className="text-xs text-indigo-600 font-medium hover:text-indigo-700">
+                  Edit
+                </button>
               )}
-            </p>
-          )}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            {(() => {
-              const def = tourDefaults
-              const rows = [
-                { label: 'Show time',  val: stop.show_start_hour    != null ? formatHour(stop.show_start_hour)                  : formatHour(def.show_start_hour),                  isDefault: stop.show_start_hour    == null },
-                { label: 'Duration',   val: stop.show_duration_hours != null ? `${stop.show_duration_hours}h`                  : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
-                { label: 'Setup',      val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
-                { label: 'Breakdown',  val: stop.breakdown_hours    != null ? `${stop.breakdown_hours}h`                      : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
-              ]
-              return rows.map(({ label, val, isDefault }) => (
-                <p key={label} className="text-xs text-gray-500">
-                  {label}:{' '}
-                  <span className="font-medium">{val ?? '—'}</span>
-                  {isDefault && val && <span className="text-gray-300 ml-1">default</span>}
-                </p>
-              ))
-            })()}
-            {(stop.rest_days ?? tourDefaults.rest_days ?? 0) > 0 && (
-              <p className="text-xs text-gray-500 col-span-2">
-                Rest days: <span className="font-medium">{stop.rest_days ?? tourDefaults.rest_days}</span>
-                {stop.rest_days == null && <span className="text-gray-300 ml-1">default</span>}
-              </p>
+            </div>
+
+            {editing ? (
+              <div className="space-y-2">
+                <TimingRow label="Show time" isTime
+                  value={form.show_start_hour}
+                  defaultVal={def.show_start_hour ?? 20}
+                  onChange={v => setForm(f => ({ ...f, show_start_hour: v }))}
+                  onReset={() => setForm(f => ({ ...f, show_start_hour: null }))}
+                />
+                <TimingRow label="Duration"
+                  value={form.show_duration_hours}
+                  defaultVal={def.show_duration_hours ?? 2}
+                  onChange={v => setForm(f => ({ ...f, show_duration_hours: v }))}
+                  onReset={() => setForm(f => ({ ...f, show_duration_hours: null }))}
+                />
+                <TimingRow label="Setup"
+                  value={form.production_setup_hours}
+                  defaultVal={def.production_setup_hours ?? 4}
+                  onChange={v => setForm(f => ({ ...f, production_setup_hours: v }))}
+                  onReset={() => setForm(f => ({ ...f, production_setup_hours: null }))}
+                />
+                <TimingRow label="Breakdown"
+                  value={form.breakdown_hours}
+                  defaultVal={def.breakdown_hours ?? 2}
+                  onChange={v => setForm(f => ({ ...f, breakdown_hours: v }))}
+                  onReset={() => setForm(f => ({ ...f, breakdown_hours: null }))}
+                />
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setEditing(false)} className="flex-1 text-xs font-medium py-1.5 rounded-lg border border-gray-200 text-gray-500 bg-white hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button onClick={saveEdit} disabled={saving} className="flex-1 text-xs font-medium py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50">
+                    {saving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                {[
+                  { label: 'Show time', val: stop.show_start_hour        != null ? formatHour(stop.show_start_hour)              : formatHour(def.show_start_hour),                                    isDefault: stop.show_start_hour        == null },
+                  { label: 'Duration',  val: stop.show_duration_hours    != null ? `${stop.show_duration_hours}h`                : def.show_duration_hours    != null ? `${def.show_duration_hours}h`    : null, isDefault: stop.show_duration_hours    == null },
+                  { label: 'Setup',     val: stop.production_setup_hours != null ? `${stop.production_setup_hours}h`            : def.production_setup_hours != null ? `${def.production_setup_hours}h` : null, isDefault: stop.production_setup_hours == null },
+                  { label: 'Breakdown', val: stop.breakdown_hours        != null ? `${stop.breakdown_hours}h`                    : def.breakdown_hours        != null ? `${def.breakdown_hours}h`        : null, isDefault: stop.breakdown_hours        == null },
+                ].map(({ label, val, isDefault }) => (
+                  <p key={label} className="text-xs text-gray-500">
+                    {label}: <span className="font-medium">{val ?? '—'}</span>
+                    {isDefault && val && <span className="text-gray-300 ml-1">default</span>}
+                  </p>
+                ))}
+                {(stop.rest_days ?? def.rest_days ?? 0) > 0 && (
+                  <p className="text-xs text-gray-500 col-span-2">
+                    Rest days: <span className="font-medium">{stop.rest_days ?? def.rest_days}</span>
+                    {stop.rest_days == null && <span className="text-gray-300 ml-1">default</span>}
+                  </p>
+                )}
+              </div>
             )}
           </div>
-          {venue?.address && <p className="text-xs text-gray-500">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>}
 
-          {/* Date pin + remove */}
-          <div className="flex gap-2 pt-1">
+          {/* Address */}
+          {venue?.address && (
+            <p className="text-xs text-gray-400">{venue.address}, {venue.city} {venue.state} {venue.zip}</p>
+          )}
+
+          {/* Pin + Remove */}
+          <div className="flex gap-2">
             <button onClick={() => onPin(stop)}
-              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${
-                stop.is_fixed
-                  ? 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50'
-                  : 'border-red-200 text-red-600 bg-white hover:bg-red-50'
-              }`}>
+              className={`flex-1 text-xs font-medium py-1.5 rounded-lg border transition-colors ${stop.is_fixed ? 'border-gray-200 text-gray-600 bg-white hover:bg-gray-50' : 'border-red-200 text-red-600 bg-white hover:bg-red-50'}`}>
               {stop.is_fixed ? 'Unpin date' : '📌 Pin date'}
             </button>
             <button onClick={() => onRemove(stop.id)}
@@ -1056,7 +1143,7 @@ export default function TourDetail() {
               </div>
             ) : (
               stops.map((stop, i) => (
-                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} tourDefaults={tourDefaults} />
+                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
               ))
             )}
           </div>
@@ -1097,7 +1184,7 @@ export default function TourDetail() {
                 </div>
               ) : (
                 stops.map((stop, i) => (
-                  <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} tourDefaults={tourDefaults} />
+                  <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
                 ))
               )}
             </div>
