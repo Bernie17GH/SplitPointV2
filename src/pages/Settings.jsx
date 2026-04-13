@@ -2,9 +2,10 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../services/supabase'
-import { enrichFromHERE } from '../services/here'
-import { enrichFromOSM }  from '../services/osm'
-import { enrichFromDDG }  from '../services/ddg'
+import { enrichFromHERE }  from '../services/here'
+import { enrichFromOSM }   from '../services/osm'
+import { enrichFromDDG }   from '../services/ddg'
+import { enrichFromBrave, getBraveUsageThisMonth, braveLimitReached } from '../services/brave'
 
 // ─── Shared primitives ───────────────────────────────────────────────────────
 
@@ -609,7 +610,7 @@ function VenueCleanupSection() {
       result = await enrichFromOSM(venue, fieldList)
     }
 
-    // DDG pass — fill any contact/capacity fields still missing after HERE + OSM
+    // DDG pass — fill website/phone/capacity still missing (Wikidata knowledge panel)
     const DDG_FIELDS = ['website', 'phone', 'capacity']
     const missingDDG = fieldList.filter(f => DDG_FIELDS.includes(f) && !result[f])
     if (missingDDG.length > 0) {
@@ -619,6 +620,19 @@ function VenueCleanupSection() {
       }
       if (ddgResult._source && Object.keys(ddgResult).some(k => k !== '_source' && ddgResult[k] != null)) {
         result._source = result._source ? `${result._source} + DDG` : 'DDG'
+      }
+    }
+
+    // Brave Search pass — web search for any website/phone still missing
+    const BRAVE_FIELDS = ['website', 'phone']
+    const missingBrave = fieldList.filter(f => BRAVE_FIELDS.includes(f) && !result[f])
+    if (missingBrave.length > 0) {
+      const braveResult = await enrichFromBrave(venue, missingBrave)
+      for (const f of missingBrave) {
+        if (braveResult[f] != null) result[f] = braveResult[f]
+      }
+      if (braveResult._source && Object.keys(braveResult).some(k => k !== '_source' && braveResult[k] != null)) {
+        result._source = result._source ? `${result._source} + Brave` : 'Brave'
       }
     }
 
@@ -865,6 +879,15 @@ function VenueCleanupSection() {
             ? 'HERE for location fields (address, geocode, city, state, zip) · OpenStreetMap for contact fields (phone, website, venue type).'
             : 'OpenStreetMap only — community-sourced data for all fields.'}
         </p>
+      </div>
+
+      {/* Brave usage indicator */}
+      <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <span>Brave web search</span>
+        <span className={getBraveUsageThisMonth() >= 2000 ? 'text-red-500 font-medium' : ''}>
+          {getBraveUsageThisMonth()} / 2,000 this month
+          {braveLimitReached() ? ' — limit reached' : ''}
+        </span>
       </div>
 
       {/* Action */}
