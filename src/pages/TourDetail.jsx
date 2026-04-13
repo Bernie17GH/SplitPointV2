@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import { geocodeAddress, optimizeRoute } from '../services/here'
-import { computeTourDates, formatDateRange, formatArrivalTime, formatHour, timeStrToHour, hourToTimeStr } from '../services/tourDates'
+import { computeTourDates, addDays, formatDateRange, formatArrivalTime, formatHour, timeStrToHour, hourToTimeStr } from '../services/tourDates'
+import { checkTourCompliance } from '../services/tourCompliance'
 import BottomSheet from '../components/ui/BottomSheet'
 import HereMap from '../components/ui/HereMap'
 
@@ -11,6 +12,42 @@ const STATUS_STYLE = {
   active:    'bg-green-100 text-green-700',
   completed: 'bg-blue-100 text-blue-700',
   cancelled: 'bg-red-100 text-red-500',
+}
+
+// ─── Compliance warning banner ────────────────────────────────────────────────
+
+function ComplianceWarningBanner({ warning, onSwitchToTwoDriver, onAddRestStop }) {
+  const isError = warning.severity === 'error'
+  const bg      = isError ? 'bg-red-50 border-red-200'   : 'bg-amber-50 border-amber-200'
+  const text    = isError ? 'text-red-700'               : 'text-amber-700'
+  const icon    = isError ? '🔴'                         : '🟡'
+
+  return (
+    <div className={`mx-0 mb-3 rounded-2xl border px-4 py-3 ${bg}`}>
+      <p className={`text-xs font-semibold mb-1 ${text}`}>
+        {icon} {warning.prevCity} → {warning.nextCity}
+      </p>
+      <p className={`text-xs mb-2 ${text}`}>{warning.message}</p>
+      <div className="flex gap-2 flex-wrap">
+        {(warning.suggestedFix === 'TWO_DRIVER_OR_REST_STOP' || warning.suggestedFix === 'CONSIDER_TWO_DRIVER') && (
+          <button
+            onClick={onSwitchToTwoDriver}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-current hover:opacity-80 transition-opacity"
+          >
+            Switch to 2-Driver Team
+          </button>
+        )}
+        {(warning.suggestedFix === 'TWO_DRIVER_OR_REST_STOP' || warning.suggestedFix === 'ADD_BUFFER_DAY') && (
+          <button
+            onClick={onAddRestStop}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-current hover:opacity-80 transition-opacity"
+          >
+            Add Rest Stop
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ─── Stop card ────────────────────────────────────────────────────────────────
@@ -51,6 +88,29 @@ function TimingRow({ label, value, defaultVal, isTime, onChange, onReset }) {
 }
 
 function StopCard({ stop, seq, onPin, onSetStart, onSetEnd, onRemove, onUpdate, tourDefaults = {} }) {
+  // Transit rest stops get a minimal card — no venue, no timing controls
+  if (stop.stop_type === 'transit_rest') {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 mb-3 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold bg-gray-300 text-white shrink-0">
+            {seq}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-600">Rest Day</p>
+            <p className="text-xs text-gray-400">
+              {stop.arrival_date ? formatArrivalTime(stop.arrival_date) : 'Dates TBD'} · Transit rest
+            </p>
+          </div>
+        </div>
+        <button onClick={() => onRemove(stop.id)}
+          className="text-xs text-red-400 font-medium hover:text-red-600">
+          Remove
+        </button>
+      </div>
+    )
+  }
+
   const [expanded, setExpanded] = useState(false)
   const [editing,  setEditing]  = useState(false)
   const [form,     setForm]     = useState({})
@@ -328,7 +388,7 @@ function ScheduleView({ stops, tourDefaults: def }) {
 
 const STATUSES = ['draft', 'active', 'completed', 'cancelled']
 
-function EditTourSheet({ open, onClose, tour, onSaved }) {
+function EditTourSheet({ open, onClose, tour, onSaved, hardErrorCount = 0 }) {
   const [form, setForm]     = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
@@ -346,6 +406,10 @@ function EditTourSheet({ open, onClose, tour, onSaved }) {
         default_production_setup_hours: tour.default_production_setup_hours ?? 4,
         default_breakdown_hours:     tour.default_breakdown_hours     ?? 2,
         default_rest_days:           tour.default_rest_days           ?? 0,
+        driver_count:                tour.driver_count                ?? 1,
+        crew_turnaround_hrs:         tour.crew_turnaround_hrs         ?? 10,
+        show_end_time:               tour.show_end_time               ?? '',
+        load_in_time:                tour.load_in_time                ?? '',
       })
       setError('')
     }
@@ -368,6 +432,10 @@ function EditTourSheet({ open, onClose, tour, onSaved }) {
         default_production_setup_hours: form.default_production_setup_hours,
         default_breakdown_hours:        form.default_breakdown_hours,
         default_rest_days:              form.default_rest_days,
+        driver_count:                   form.driver_count,
+        crew_turnaround_hrs:            form.crew_turnaround_hrs,
+        show_end_time:                  form.show_end_time               || null,
+        load_in_time:                   form.load_in_time                || null,
       }).eq('id', tour.id)
       if (err) throw err
       onSaved()
@@ -394,15 +462,25 @@ function EditTourSheet({ open, onClose, tour, onSaved }) {
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-2">Status</label>
           <div className="grid grid-cols-4 gap-1 bg-gray-100 rounded-xl p-1">
-            {STATUSES.map(s => (
-              <button key={s} onClick={() => set('status', s)}
-                className={`rounded-lg text-xs font-medium py-1.5 capitalize transition-colors ${
-                  form.status === s ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
-                }`}>
-                {s}
-              </button>
-            ))}
+            {STATUSES.map(s => {
+              const blocked = s === 'active' && hardErrorCount > 0
+              return (
+                <button key={s}
+                  onClick={() => !blocked && set('status', s)}
+                  title={blocked ? `Fix ${hardErrorCount} compliance error${hardErrorCount > 1 ? 's' : ''} before activating` : undefined}
+                  className={`rounded-lg text-xs font-medium py-1.5 capitalize transition-colors ${
+                    form.status === s ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+                  } ${blocked ? 'opacity-40 cursor-not-allowed' : ''}`}>
+                  {s}{blocked ? ' 🔴' : ''}
+                </button>
+              )
+            })}
           </div>
+          {hardErrorCount > 0 && form.status !== 'active' && (
+            <p className="text-xs text-red-500 mt-1.5">
+              {hardErrorCount} compliance error{hardErrorCount > 1 ? 's' : ''} must be resolved before activating this tour.
+            </p>
+          )}
         </div>
 
         {/* Dates */}
@@ -461,6 +539,54 @@ function EditTourSheet({ open, onClose, tour, onSaved }) {
               <label className="block text-xs text-gray-500 mb-1">Rest Days per venue</label>
               <input type="number" min="0" max="14" value={form.default_rest_days ?? 0}
                 onChange={e => set('default_rest_days', parseInt(e.target.value) || 0)}
+                className={inputCls} />
+            </div>
+          </div>
+        </div>
+
+        {/* Crew & Driver Compliance */}
+        <div className="border-t border-gray-50 pt-3 space-y-3">
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Crew &amp; Driver Compliance</p>
+
+          {/* Driver count toggle */}
+          <div className="flex items-center justify-between py-1">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Driver Team</p>
+              <p className="text-xs text-gray-400">2-driver teams bypass the 10h FMCSA limit</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {form.driver_count === 2 && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">2-Driver Team active</span>
+              )}
+              <button onClick={() => set('driver_count', form.driver_count === 2 ? 1 : 2)}
+                className={`relative inline-flex h-6 w-11 rounded-full transition-colors ${form.driver_count === 2 ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform mt-0.5 ${form.driver_count === 2 ? 'translate-x-5' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Crew turnaround */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Preferred Crew Turnaround (hrs)</label>
+            <input type="number" min="8" max="24" step="0.5" value={form.crew_turnaround_hrs ?? 10}
+              onChange={e => set('crew_turnaround_hrs', parseFloat(e.target.value) || 10)}
+              className={inputCls} />
+            <p className="text-xs text-gray-400 mt-0.5">IATSE absolute minimum is 8h. Advisory warnings shown below your preference.</p>
+          </div>
+
+          {/* Precise load-out / load-in times (optional) */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Show End / Load-Out Time</label>
+              <input type="time" step="600" value={form.show_end_time ?? ''}
+                onChange={e => set('show_end_time', e.target.value)}
+                className={inputCls} />
+              <p className="text-xs text-gray-400 mt-0.5">Optional — enables precise IATSE checks</p>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Load-In Call Time</label>
+              <input type="time" step="600" value={form.load_in_time ?? ''}
+                onChange={e => set('load_in_time', e.target.value)}
                 className={inputCls} />
             </div>
           </div>
@@ -900,6 +1026,42 @@ export default function TourDetail() {
     [stops]
   )
 
+  const compliance = useMemo(() => checkTourCompliance(stops, tour), [stops, tour])
+  const hardErrorCount = compliance.filter(w => w.severity === 'error').length
+
+  // Key compliance warnings by the stopId they reference for easy lookup
+  const complianceByStop = useMemo(() => {
+    const map = {}
+    compliance.forEach(w => {
+      if (!map[w.stopId]) map[w.stopId] = []
+      map[w.stopId].push(w)
+    })
+    return map
+  }, [compliance])
+
+  async function handleSwitchToTwoDriver() {
+    await supabase.from('tours').update({ driver_count: 2 }).eq('id', id)
+    loadTour()
+  }
+
+  async function handleAddRestStop(afterStopIndex) {
+    // Insert a transit_rest stop after the given index with sequence_order shifted
+    const newOrder = afterStopIndex + 1
+    // Shift all subsequent stops up by 1
+    const toShift = stops.slice(newOrder).map(s => ({ ...s, sequence_order: s.sequence_order + 1 }))
+    await Promise.all(toShift.map(s =>
+      supabase.from('tour_stops').update({ sequence_order: s.sequence_order }).eq('id', s.id)
+    ))
+    await supabase.from('tour_stops').insert({
+      tour_id:        id,
+      venue_id:       null,
+      sequence_order: newOrder,
+      stop_type:      'transit_rest',
+      rest_days:      1,
+    })
+    loadTour()
+  }
+
   async function handleOptimize() {
     if (stops.length < 2) { setOptError('Add at least 2 stops to optimize.'); return }
 
@@ -961,6 +1123,8 @@ export default function TourDetail() {
         arrival_date:           dated[i].arrival_date,
         departure_date:         dated[i].departure_date,
         travel_hours_from_prev: i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
+        estimated_drive_hours:  i > 0 ? newLegs[i - 1]?.durationHours ?? null : null,
+        stop_type:              stop.stop_type ?? 'show',
       }))
 
       const [stopsResult, tourResult] = await Promise.all([
@@ -1076,6 +1240,19 @@ export default function TourDetail() {
           </button>
         </div>
         {optError && <p className="text-xs text-red-500 mt-2">{optError}</p>}
+        {compliance.length > 0 ? (
+          <p className="text-xs mt-2">
+            {hardErrorCount > 0 && <span className="text-red-600 font-semibold">🔴 {hardErrorCount} error{hardErrorCount > 1 ? 's' : ''} </span>}
+            {compliance.filter(w => w.severity === 'warning').length > 0 && (
+              <span className="text-amber-600 font-semibold">
+                🟡 {compliance.filter(w => w.severity === 'warning').length} warning{compliance.filter(w => w.severity === 'warning').length > 1 ? 's' : ''}
+              </span>
+            )}
+          </p>
+        ) : (
+          stops.length >= 2 && tour.route_calculations_count > 0 &&
+          <p className="text-xs text-green-600 mt-2">✅ All clear</p>
+        )}
       </div>
 
       {/* Artist lineup */}
@@ -1143,7 +1320,14 @@ export default function TourDetail() {
               </div>
             ) : (
               stops.map((stop, i) => (
-                <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
+                <div key={stop.id}>
+                  {(complianceByStop[stop.id] ?? []).map((w, wi) => (
+                    <ComplianceWarningBanner key={wi} warning={w}
+                      onSwitchToTwoDriver={handleSwitchToTwoDriver}
+                      onAddRestStop={() => handleAddRestStop(w.stopIndex - 1)} />
+                  ))}
+                  <StopCard stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
+                </div>
               ))
             )}
           </div>
@@ -1184,7 +1368,14 @@ export default function TourDetail() {
                 </div>
               ) : (
                 stops.map((stop, i) => (
-                  <StopCard key={stop.id} stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
+                  <div key={stop.id}>
+                    {(complianceByStop[stop.id] ?? []).map((w, wi) => (
+                      <ComplianceWarningBanner key={wi} warning={w}
+                        onSwitchToTwoDriver={handleSwitchToTwoDriver}
+                        onAddRestStop={() => handleAddRestStop(w.stopIndex - 1)} />
+                    ))}
+                    <StopCard stop={stop} seq={i + 1} onPin={handlePin} onSetStart={handleSetStart} onSetEnd={handleSetEnd} onRemove={handleRemove} onUpdate={loadTour} tourDefaults={tourDefaults} />
+                  </div>
                 ))
               )}
             </div>
@@ -1207,6 +1398,7 @@ export default function TourDetail() {
         onClose={() => setEditingTour(false)}
         tour={tour}
         onSaved={() => { setEditingTour(false); loadTour() }}
+        hardErrorCount={hardErrorCount}
       />
 
       <AddStopSheet
