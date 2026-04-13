@@ -101,23 +101,38 @@ export async function enrichFromBrave(venue, fields) {
     const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&count=5`)
     if (!res.ok) return {}
     const data    = await res.json()
-    const results = data.web?.results ?? []
-    if (!results.length) return {}
+    const webResults = data.web?.results ?? []
+
+    // Brave's infobox = knowledge panel for the business (most reliable source)
+    const infobox = data.infobox?.results?.[0]
 
     const result = { _source: 'Brave' }
 
     if (wantWebsite) {
-      // Prefer the first non-aggregator result as the official site
-      const official = results.find(r => !isAggregator(r.url))
-      if (official) result.website = official.url
+      // 1. Infobox URL is the official site when present
+      const infoboxUrl = infobox?.url ?? infobox?.profiles?.[0]?.url
+      if (infoboxUrl && !isAggregator(infoboxUrl)) {
+        result.website = infoboxUrl
+      } else {
+        // 2. Fall back to first non-aggregator web result
+        const official = webResults.find(r => !isAggregator(r.url))
+        if (official) result.website = official.url
+      }
     }
 
     if (wantPhone) {
-      // Scan all snippets for a US phone number
-      for (const r of results) {
-        const text  = `${r.title ?? ''} ${r.description ?? ''}`
-        const match = text.match(PHONE_RE)
-        if (match) { result.phone = match[0]; break }
+      // Check infobox attributes first, then scan web snippets
+      const phoneAttr = infobox?.attributes?.find(a =>
+        /phone|telephone|contact/i.test(a.name ?? a.label ?? '')
+      )
+      if (phoneAttr?.value) {
+        result.phone = phoneAttr.value
+      } else {
+        for (const r of webResults) {
+          const text  = `${r.title ?? ''} ${r.description ?? ''}`
+          const match = text.match(PHONE_RE)
+          if (match) { result.phone = match[0]; break }
+        }
       }
     }
 
