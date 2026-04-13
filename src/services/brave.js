@@ -121,17 +121,32 @@ export async function enrichFromBrave(venue, fields) {
     }
 
     if (wantPhone) {
-      // Check infobox attributes first, then scan web snippets
+      // 1. Infobox attributes (structured data from Brave)
       const phoneAttr = infobox?.attributes?.find(a =>
         /phone|telephone|contact/i.test(a.name ?? a.label ?? '')
       )
       if (phoneAttr?.value) {
         result.phone = phoneAttr.value
       } else {
-        for (const r of webResults) {
-          const text  = `${r.title ?? ''} ${r.description ?? ''}`
-          const match = text.match(PHONE_RE)
-          if (match) { result.phone = match[0]; break }
+        // 2. Fetch the venue's own website and extract phone directly
+        const siteUrl = result.website
+        if (siteUrl) {
+          try {
+            const pageRes = await fetch(`/api/fetch-page?url=${encodeURIComponent(siteUrl)}`)
+            if (pageRes.ok) {
+              const { phone } = await pageRes.json()
+              if (phone) result.phone = phone
+            }
+          } catch {}
+        }
+
+        // 3. Fallback: scan Brave web snippet text
+        if (!result.phone) {
+          for (const r of webResults) {
+            const text  = `${r.title ?? ''} ${r.description ?? ''}`
+            const match = text.match(PHONE_RE)
+            if (match) { result.phone = match[0]; break }
+          }
         }
       }
     }
