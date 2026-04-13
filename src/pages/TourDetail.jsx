@@ -16,11 +16,13 @@ const STATUS_STYLE = {
 
 // ─── Drive-time leg connector ─────────────────────────────────────────────────
 
-function LegConnector({ stop, twoDriver }) {
+function LegConnector({ stop, twoDriver, onClearTwoDriver }) {
   const hours = stop.travel_hours_from_prev ?? stop.estimated_drive_hours
   if (!hours) return null
-  const miles        = stop.distance_miles_from_prev
-  const needs2Driver = stop.requires_two_driver || (twoDriver && hours > 8)
+  const miles              = stop.distance_miles_from_prev
+  const perLegTwoDriver    = stop.requires_two_driver
+  const tourWideTwoDriver  = twoDriver && hours > 8
+  const needs2Driver       = perLegTwoDriver || tourWideTwoDriver
   return (
     <div className="flex items-center gap-2 px-4 py-1 my-1">
       <div className="w-0.5 h-4 bg-gray-200 mx-3 shrink-0" />
@@ -31,6 +33,14 @@ function LegConnector({ stop, twoDriver }) {
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
           2-Driver Leg
         </span>
+      )}
+      {perLegTwoDriver && onClearTwoDriver && (
+        <button
+          onClick={onClearTwoDriver}
+          className="text-xs text-gray-400 hover:text-gray-600 font-medium underline underline-offset-2"
+        >
+          Change
+        </button>
       )}
     </div>
   )
@@ -1079,6 +1089,11 @@ export default function TourDetail() {
     loadTour()
   }
 
+  async function handleClearTwoDriver(stopId) {
+    await supabase.from('tour_stops').update({ requires_two_driver: false }).eq('id', stopId)
+    loadTour()
+  }
+
   async function handleAddRestStop(afterStopIndex) {
     setOptError('')
     try {
@@ -1363,7 +1378,7 @@ export default function TourDetail() {
             ) : (
               stops.map((stop, i) => (
                 <div key={stop.id}>
-                  {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} />}
+                  {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} onClearTwoDriver={() => handleClearTwoDriver(stop.id)} />}
                   {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                     <ComplianceWarningBanner key={wi} warning={w}
                       onSwitchToTwoDriver={() => handleSwitchToTwoDriver(w.stopId)}
@@ -1412,7 +1427,7 @@ export default function TourDetail() {
               ) : (
                 stops.map((stop, i) => (
                   <div key={stop.id}>
-                    {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} />}
+                    {i > 0 && <LegConnector stop={stop} twoDriver={tour.driver_count === 2} onClearTwoDriver={() => handleClearTwoDriver(stop.id)} />}
                     {(complianceByStop[stop.id] ?? []).map((w, wi) => (
                       <ComplianceWarningBanner key={wi} warning={w}
                         onSwitchToTwoDriver={handleSwitchToTwoDriver}
