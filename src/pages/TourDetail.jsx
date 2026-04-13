@@ -1131,15 +1131,19 @@ export default function TourDetail() {
 
   const mapStops = useMemo(() =>
     stops
+      .map((s, i) => ({ ...s, _seq: i + 1 }))           // capture full-list position first
       .filter(s => s.venues?.lat && s.venues?.lng)
       .map(s => ({
-        id: s.id,
-        lat: s.venues.lat,
-        lng: s.venues.lng,
-        name: s.venues.name,
-        city: s.venues.city,
-        state: s.venues.state,
+        id:       s.id,
+        seq:      s._seq,                                 // matches the list view number
+        lat:      s.venues.lat,
+        lng:      s.venues.lng,
+        name:     s.venues.name,
+        city:     s.venues.city,
+        state:    s.venues.state,
         is_fixed: s.is_fixed,
+        is_start: s.is_start_stop,
+        is_end:   s.is_end_stop,
       })),
     [stops]
   )
