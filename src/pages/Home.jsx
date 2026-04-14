@@ -28,28 +28,32 @@ export default function Home() {
   const [stats, setStats] = useState(null)
 
   useEffect(() => {
+    if (!user) return
+    const uid = user.id
     async function load() {
-      const artistQuery = isAdmin
-        ? supabase.from('artists').select('*', { count: 'exact', head: true })
-        : supabase.from('artists').select('*', { count: 'exact', head: true }).eq('agent_id', user?.id)
-
-      const toursBase = isAdmin
-        ? supabase.from('tours')
-        : supabase.from('tours').eq('agent_id', user?.id)
-
-      const [artistsRes, venuesRes, activeRes, draftRes] = await Promise.all([
-        artistQuery,
-        supabase.from('venues').select('*', { count: 'exact', head: true }),
-        toursBase.select('*', { count: 'exact', head: true }).eq('status', 'active'),
-        toursBase.select('*', { count: 'exact', head: true }).eq('status', 'draft'),
-      ])
-
-      setStats({
-        myArtists:   artistsRes.count ?? 0,
-        venueCount:  venuesRes.count  ?? 0,
-        activeTours: activeRes.count  ?? 0,
-        draftTours:  draftRes.count   ?? 0,
-      })
+      try {
+        const [artistsRes, venuesRes, activeRes, draftRes] = await Promise.all([
+          isAdmin
+            ? supabase.from('artists').select('*', { count: 'exact', head: true })
+            : supabase.from('artists').select('*', { count: 'exact', head: true }).eq('agent_id', uid),
+          supabase.from('venues').select('*', { count: 'exact', head: true }),
+          isAdmin
+            ? supabase.from('tours').select('*', { count: 'exact', head: true }).eq('status', 'active')
+            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('agent_id', uid).eq('status', 'active'),
+          isAdmin
+            ? supabase.from('tours').select('*', { count: 'exact', head: true }).eq('status', 'draft')
+            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('agent_id', uid).eq('status', 'draft'),
+        ])
+        setStats({
+          myArtists:   artistsRes.count ?? 0,
+          venueCount:  venuesRes.count  ?? 0,
+          activeTours: activeRes.count  ?? 0,
+          draftTours:  draftRes.count   ?? 0,
+        })
+      } catch (e) {
+        console.warn('Home stats load error:', e)
+        setStats({ myArtists: 0, venueCount: 0, activeTours: 0, draftTours: 0 })
+      }
     }
     load()
   }, [user, isAdmin])
