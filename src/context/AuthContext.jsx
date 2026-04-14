@@ -82,6 +82,19 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // Apply (or clear) per-user display settings whenever the active user changes.
+  // This ensures dark/compact mode is correct on login, logout, and tab restore.
+  useEffect(() => {
+    if (user?.id) {
+      const dark    = localStorage.getItem(`sp_${user.id}_dark`)    === 'true'
+      const compact = localStorage.getItem(`sp_${user.id}_compact`) === 'true'
+      document.documentElement.classList.toggle('dark',    dark)
+      document.documentElement.classList.toggle('compact', compact)
+    } else {
+      document.documentElement.classList.remove('dark', 'compact')
+    }
+  }, [user?.id])
+
   async function signIn(email, password) {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw new Error(error.message)
