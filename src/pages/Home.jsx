@@ -39,10 +39,10 @@ export default function Home() {
           supabase.from('venues').select('*', { count: 'exact', head: true }),
           isAdmin
             ? supabase.from('tours').select('*', { count: 'exact', head: true }).eq('status', 'active')
-            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('agent_id', uid).eq('status', 'active'),
+            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('created_by', uid).eq('status', 'active'),
           isAdmin
             ? supabase.from('tours').select('*', { count: 'exact', head: true }).eq('status', 'draft')
-            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('agent_id', uid).eq('status', 'draft'),
+            : supabase.from('tours').select('*', { count: 'exact', head: true }).eq('created_by', uid).eq('status', 'draft'),
         ])
         setStats({
           myArtists:   artistsRes.count ?? 0,
